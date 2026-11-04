@@ -10,7 +10,7 @@ https://github.com/super7abaga-crypto/NewPro
 
 **Branch:** `main`
 
-**Final commit SHA:** To be updated after the final documentation commit.
+**Final commit SHA:** 2b240d84b6925de045141e2fd67882c565f93218
 
 ## 2. Python Version
 
