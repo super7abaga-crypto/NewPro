@@ -1,0 +1,10 @@
+# secrets
+.env
+*.key
+# derived data that can be rebuilt
+data/cache.json
+data/analyses.json
+# python
+__pycache__/
+*.pyc
+.pytest_cache/

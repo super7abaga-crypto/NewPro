@@ -1,0 +1,5 @@
+id,event,text,created_at
+R001,Food & Sound Fest,Duplicate id case,2026-01-15
+R001,Food & Sound Fest,Duplicate id case again,2026-01-15
+R900,,Blank event should be rejected here,2026-01-20
+R901,Food & Sound Fest,Valid text but the date below is impossible,2026-13-45
