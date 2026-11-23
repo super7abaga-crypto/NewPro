@@ -1,0 +1,28 @@
+{
+  "name": "mystery-island-3d",
+  "version": "0.9.0-prototype",
+  "private": true,
+  "description": "First-person survival horror remake of the Mystery Island CLI game. Runs in the browser, desktop and mobile.",
+  "type": "module",
+  "three": "0.157.0",
+  "dependencies": {},
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "python3 -m http.server 8000",
+    "test": "node tests/rules.test.mjs && node tests/world.test.mjs && node tests/save.test.mjs && node tests/offline.test.mjs && node tests/dom.test.mjs",
+    "test:rules": "node tests/rules.test.mjs",
+    "test:world": "node tests/world.test.mjs",
+    "test:save": "node tests/save.test.mjs",
+    "test:offline": "node tests/offline.test.mjs",
+    "test:dom": "node tests/dom.test.mjs",
+    "test:python-cli": "cd ../easy-mystery-island && python3 -m unittest discover -s tests"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "threeSource": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js",
+  "threeSha256": "445798e31f78915517816443e59440b3ab575633c40c278e30b3ac9ea55fa0c0"
+}

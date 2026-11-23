@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#05070a" />
+<title>Mystery Island — The Lost Lighthouse</title>
+<style>
+  :root{
+    --ink:#05070a;
+    --bone:#e8e2d6;
+    --rust:#b4462c;
+    --amber:#e8a54a;
+    --cold:#7fa6bd;
+    --line:rgba(232,226,214,.14);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--ink);color:var(--bone);
+    font-family:'Trebuchet MS','Segoe UI',system-ui,sans-serif;user-select:none}
+  canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+
+  /* ---------------------------------------------------------- overlays */
+  .screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px;z-index:20;text-align:center;background:
+      radial-gradient(1200px 700px at 50% 10%, rgba(40,60,80,.28), transparent 70%),
+      linear-gradient(180deg,#04060a 0%,#070b10 55%,#04060a 100%);}
+  .screen.on{display:flex}
+  .screen.dim{background:rgba(3,5,8,.82);backdrop-filter:blur(6px)}
+  .grain{position:fixed;inset:0;pointer-events:none;z-index:25;opacity:.22;mix-blend-mode:overlay;
+    background-image:radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px);background-size:3px 3px}
+
+  h1.title{margin:0 0 6px;font-family:Georgia,'Times New Roman',serif;font-weight:700;
+    font-size:clamp(30px,7.4vw,62px);letter-spacing:.14em;text-transform:uppercase;
+    color:#f2ece0;text-shadow:0 0 26px rgba(180,70,44,.55),0 0 60px rgba(0,0,0,.9);
+    animation:flicker 7s infinite}
+  @keyframes flicker{0%,96%,100%{opacity:1}97%{opacity:.62}98%{opacity:1}99%{opacity:.78}}
+  .subtitle{margin:0 0 30px;font-size:clamp(11px,2.7vw,14px);letter-spacing:.42em;text-transform:uppercase;
+    color:var(--cold);opacity:.8}
+  .menu{display:flex;flex-direction:column;gap:10px;width:min(330px,86vw)}
+  .mbtn{position:relative;padding:15px 20px;border:1px solid var(--line);border-radius:3px;
+    background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));
+    color:var(--bone);font-size:14.5px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;
+    transition:.18s;font-family:inherit}
+  .mbtn:hover:not(:disabled){background:linear-gradient(180deg,rgba(180,70,44,.3),rgba(180,70,44,.1));
+    border-color:rgba(232,165,74,.5);transform:translateY(-1px)}
+  .mbtn:disabled{opacity:.32;cursor:not-allowed}
+  .mbtn small{display:block;margin-top:4px;font-size:10px;letter-spacing:.12em;opacity:.55;text-transform:none}
+  .foot{position:absolute;bottom:18px;left:0;right:0;font-size:10.5px;letter-spacing:.16em;color:rgba(232,226,214,.32);text-transform:uppercase}
+
+  /* ----------------------------------------------------------- settings */
+  .panel{width:min(420px,92vw);text-align:left}
+  .panel h2{font-family:Georgia,serif;letter-spacing:.2em;text-transform:uppercase;font-size:17px;margin:0 0 20px;text-align:center}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px;font-size:12.5px;
+    letter-spacing:.1em;text-transform:uppercase;color:rgba(232,226,214,.78)}
+  .row input[type=range]{width:150px;accent-color:var(--rust)}
+  .row select{background:#0b0f14;color:var(--bone);border:1px solid var(--line);border-radius:3px;padding:7px 9px;font-family:inherit}
+  .row input[type=checkbox]{width:18px;height:18px;accent-color:var(--rust)}
+
+  /* ---------------------------------------------------------------- HUD */
+  #hud{position:fixed;inset:0;z-index:12;display:none;pointer-events:none}
+  #hud.on{display:block}
+  .hud-top{position:absolute;top:max(14px,env(safe-area-inset-top));left:16px;right:16px;display:flex;
+    justify-content:space-between;align-items:flex-start;gap:12px}
+  .loc{font-family:Georgia,serif;letter-spacing:.24em;text-transform:uppercase;font-size:12.5px;color:rgba(232,226,214,.85);
+    text-shadow:0 2px 12px #000}
+  .objective{margin-top:5px;font-size:10.5px;letter-spacing:.1em;color:var(--amber);opacity:.9;max-width:56vw;line-height:1.5}
+  .energy{display:flex;gap:5px;align-items:center}
+  .pip{width:16px;height:5px;border-radius:1px;background:rgba(232,226,214,.16);transition:.3s}
+  .pip.on{background:var(--amber);box-shadow:0 0 9px rgba(232,165,74,.65)}
+  .pip.crit{background:var(--rust);box-shadow:0 0 10px rgba(180,70,44,.8)}
+  .inv{position:absolute;left:16px;bottom:max(16px,env(safe-area-inset-bottom));display:flex;gap:7px;flex-wrap:wrap;max-width:46vw}
+  .chip{font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:5px 9px;border:1px solid var(--line);
+    border-radius:2px;background:rgba(8,12,16,.6);color:rgba(232,226,214,.8)}
+  .chip.rope{border-color:rgba(154,138,96,.6);color:#c9b98a}
+  .chip.lantern{border-color:rgba(232,165,74,.6);color:var(--amber)}
+  #prompt{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);padding:10px 16px;border-radius:3px;
+    border:1px solid rgba(232,165,74,.42);background:rgba(6,9,12,.72);font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:#f0e7d6;opacity:0;transition:opacity .18s;white-space:nowrap;max-width:88vw;
+    overflow:hidden;text-overflow:ellipsis}
+  #prompt.on{opacity:1}
+  #prompt b{color:var(--amber);font-weight:700}
+  #subtitle{position:absolute;left:50%;bottom:12%;transform:translateX(-50%);width:min(680px,88vw);text-align:center;
+    font-size:13.5px;line-height:1.65;color:#efe7d8;text-shadow:0 2px 14px #000;opacity:0;transition:opacity .4s;
+    font-style:italic}
+  #subtitle.on{opacity:1}
+  #vignette{position:fixed;inset:0;z-index:11;pointer-events:none;opacity:0;transition:opacity .25s;
+    background:radial-gradient(circle at 50% 50%, transparent 42%, rgba(120,10,0,.75) 100%)}
+  #vignette.on{opacity:1}
+  #flash{position:fixed;inset:0;z-index:26;pointer-events:none;background:#dfe9f5;opacity:0;transition:opacity .12s}
+  #fade{position:fixed;inset:0;z-index:27;pointer-events:none;background:#000;opacity:0}
+
+  /* ------------------------------------------------------------- touch */
+  #touch{position:fixed;inset:0;z-index:14;display:none;pointer-events:none}
+  #touch.on{display:block}
+  #joy{position:absolute;left:26px;bottom:calc(26px + env(safe-area-inset-bottom));width:118px;height:118px;
+    border-radius:50%;border:1px solid rgba(232,226,214,.2);background:rgba(255,255,255,.04)}
+  #joyKnob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;
+    background:rgba(232,165,74,.35);border:1px solid rgba(232,165,74,.6)}
+  .tbtn{pointer-events:auto;position:absolute;border-radius:50%;border:1px solid rgba(232,226,214,.25);background:rgba(10,14,18,.62);
+    color:var(--bone);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;display:grid;place-items:center;
+    backdrop-filter:blur(3px)}
+  #btn-interact{right:26px;bottom:calc(96px + env(safe-area-inset-bottom));width:88px;height:88px;font-size:11px;
+    border-color:rgba(232,165,74,.55);color:#f6e6c8}
+  #btn-light{right:124px;bottom:calc(34px + env(safe-area-inset-bottom));width:64px;height:64px}
+  #btn-pause{right:26px;top:calc(16px + env(safe-area-inset-top));width:44px;height:44px;font-size:14px}
+
+  /* -------------------------------------------------------------- misc */
+  #boot{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:#04060a;gap:18px}
+  .bar{width:min(280px,70vw);height:2px;background:rgba(232,226,214,.14);overflow:hidden}
+  .bar i{display:block;height:100%;width:0%;background:var(--rust);transition:width .3s}
+  #bootText{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:rgba(232,226,214,.5)}
+  #errorBox{display:none;max-width:520px;text-align:left;font-size:13px;line-height:1.7;color:#f0d6cf;
+    border:1px solid rgba(180,70,44,.5);background:rgba(60,16,10,.5);padding:16px;border-radius:4px}
+  #errorBox code{color:var(--amber);font-size:12px}
+  .end h1{font-family:Georgia,serif;letter-spacing:.16em;text-transform:uppercase;font-size:clamp(24px,6vw,40px);margin:0 0 12px}
+  .end p{max-width:520px;font-size:14.5px;line-height:1.8;color:rgba(232,226,214,.82);margin:0 0 26px;white-space:pre-line}
+  .end.win h1{color:#ffdf9e;text-shadow:0 0 30px rgba(232,165,74,.6)}
+  .end.lose h1{color:#e2806b}
+  #fps{position:fixed;right:8px;bottom:6px;z-index:30;font-size:10px;color:rgba(232,226,214,.4);display:none}
+  @media (max-width:520px){ .inv{max-width:56vw} #prompt{bottom:26%} }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div id="flash"></div>
+<div id="fade"></div>
+<div id="vignette"></div>
+
+<!-- ===================== BOOT ===================== -->
+<div id="boot">
+  <div id="bootText">Loading the island</div>
+  <div class="bar"><i id="bootBar"></i></div>
+  <div id="errorBox"></div>
+</div>
+
+<!-- ===================== MENU ===================== -->
+<section id="screen-menu" class="screen">
+  <h1 class="title">Mystery Island</h1>
+  <p class="subtitle">The Lost Lighthouse</p>
+  <nav class="menu">
+    <button class="mbtn" id="btn-new">New Game<small>wake on the beach</small></button>
+    <button class="mbtn" id="btn-continue">Continue<small id="continueMeta">no saved game</small></button>
+    <button class="mbtn" id="btn-settings">Settings</button>
+    <button class="mbtn" id="btn-credits">Credits</button>
+  </nav>
+  <div class="foot">A first-person survival horror · West Africa Time not required</div>
+</section>
+
+<!-- ===================== SETTINGS ===================== -->
+<section id="screen-settings" class="screen dim">
+  <div class="panel">
+    <h2>Settings</h2>
+    <div class="row"><label for="set-volume">Volume</label><input id="set-volume" type="range" min="0" max="100" value="75" /></div>
+    <div class="row"><label for="set-bright">Brightness</label><input id="set-bright" type="range" min="40" max="180" value="100" /></div>
+    <div class="row"><label for="set-look">Look speed</label><input id="set-look" type="range" min="30" max="220" value="100" /></div>
+    <div class="row"><label for="set-quality">Quality</label>
+      <select id="set-quality">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <div class="row"><label for="set-subtitles">Subtitles</label><input id="set-subtitles" type="checkbox" checked /></div>
+    <button class="mbtn" id="btn-settings-back" style="width:100%">Back</button>
+  </div>
+</section>
+
+<!-- ===================== CREDITS ===================== -->
+<section id="screen-credits" class="screen dim">
+  <div class="panel">
+    <h2>Credits</h2>
+    <p style="font-size:13px;line-height:1.9;color:rgba(232,226,214,.78)">
+      <b>Mystery Island: The Lost Lighthouse</b><br />
+      Original terminal game: pure Python, standard library only.<br />
+      This first-person version: Three.js + Web Audio, no external assets.<br />
+      All sound is synthesised at runtime. All geometry is generated at runtime.<br />
+      Story, map, energy, rope and lantern rules are unchanged from the CLI.
+    </p>
+    <button class="mbtn" id="btn-credits-back" style="width:100%;margin-top:18px">Back</button>
+  </div>
+</section>
+
+<!-- ===================== END ===================== -->
+<section id="screen-end" class="screen end">
+  <h1 id="endTitle">You escaped</h1>
+  <p id="endText"></p>
+  <div class="menu">
+    <button class="mbtn" id="btn-again">Play Again</button>
+    <button class="mbtn" id="btn-to-menu">Main Menu</button>
+  </div>
+</section>
+
+<!-- ===================== PAUSE ===================== -->
+<section id="screen-pause" class="screen dim">
+  <div class="panel">
+    <h2>Paused</h2>
+    <div class="row" style="justify-content:center;gap:8px">
+      <button class="mbtn" id="btn-resume" style="flex:1">Resume</button>
+      <button class="mbtn" id="btn-pause-settings" style="flex:1">Settings</button>
+    </div>
+    <button class="mbtn" id="btn-quit" style="width:100%">Save &amp; Quit to Menu</button>
+  </div>
+</section>
+
+<!-- ===================== HUD ===================== -->
+<div id="hud">
+  <div class="hud-top">
+    <div>
+      <div class="loc" id="hud-location">Beach</div>
+      <div class="objective" id="hud-objective"></div>
+    </div>
+    <div class="energy" id="hud-energy"></div>
+  </div>
+  <div class="inv" id="hud-inventory"></div>
+  <div id="prompt"><b id="prompt-key">E</b> <span id="prompt-text"></span></div>
+  <div id="subtitle"></div>
+</div>
+
+<!-- ===================== TOUCH ===================== -->
+<div id="touch">
+  <div id="joy"><div id="joyKnob"></div></div>
+  <button class="tbtn" id="btn-interact">Use</button>
+  <button class="tbtn" id="btn-light">Lamp</button>
+  <button class="tbtn" id="btn-pause">II</button>
+</div>
+
+<div id="fps"></div>
+
+<!-- Three.js r157, vendored locally in vendor/ so the game runs with no network -->
+<script src="vendor/three.min.js"></script>
+<script src="src/rules.js"></script>
+<script src="src/save.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/world.js"></script>
+<script src="src/player.js"></script>
+<script src="src/controls.js"></script>
+<script src="src/horror.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
