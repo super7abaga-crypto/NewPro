@@ -170,8 +170,8 @@
     return {
       group, colliders, anchors, animated,
       surface: 'sand',
-      fog: { color: 0x0a1016, density: 0.042 },
-      ambient: { color: 0x22303c, intensity: 0.42, sky: 0x2a3a48, ground: 0x0b0d10 },
+      fog: { color: 0x0a1016, density: 0.030 },
+      ambient: { color: 0x22303c, intensity: 0.62, sky: 0x2a3a48, ground: 0x0b0d10 },
       flashlightNeed: 0.4,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -299,8 +299,8 @@
     return {
       group, colliders, anchors, animated, figure,
       surface: 'leaves',
-      fog: { color: 0x06110c, density: 0.075 },
-      ambient: { color: 0x1b3327, intensity: 0.34, sky: 0x1c3a2a, ground: 0x060a08 },
+      fog: { color: 0x06110c, density: 0.050 },
+      ambient: { color: 0x1b3327, intensity: 0.55, sky: 0x1c3a2a, ground: 0x060a08 },
       flashlightNeed: 0.6,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -413,8 +413,8 @@
     return {
       group, colliders, anchors, animated,
       surface: 'rock',
-      fog: { color: 0x02040a, density: 0.115 },
-      ambient: { color: 0x0d1016, intensity: 0.12, sky: 0x0a0d12, ground: 0x020203 },
+      fog: { color: 0x02040a, density: 0.075 },
+      ambient: { color: 0x0d1016, intensity: 0.34, sky: 0x1a2430, ground: 0x020203 },
       flashlightNeed: 1,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -516,8 +516,8 @@
     return {
       group, colliders, anchors, animated,
       surface: 'wood',
-      fog: { color: 0x05080c, density: 0.06 },
-      ambient: { color: 0x1a2230, intensity: 0.3, sky: 0x1d2a36, ground: 0x04060a },
+      fog: { color: 0x05080c, density: 0.042 },
+      ambient: { color: 0x1a2230, intensity: 0.50, sky: 0x1d2a36, ground: 0x04060a },
       flashlightNeed: 0.5,
       clamp(pos) {
         if (Math.abs(pos.z) < 6.2) {
@@ -625,8 +625,8 @@
     return {
       group, colliders, anchors, animated,
       surface: 'rock',
-      fog: { color: 0x070a0f, density: 0.05 },
-      ambient: { color: 0x243040, intensity: 0.36, sky: 0x24384a, ground: 0x080a0d },
+      fog: { color: 0x070a0f, density: 0.038 },
+      ambient: { color: 0x243040, intensity: 0.55, sky: 0x24384a, ground: 0x080a0d },
       flashlightNeed: 0.5,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -747,6 +747,41 @@
     return group;
   }
 
+  /* A cold moon overhead: gives every room shape and contrast without the lamp. */
+  function addMoonlight(THREE, group) {
+    const moon = new THREE.DirectionalLight(0xa8c4e0, 0.62);
+    moon.name = 'moon';
+    moon.position.set(-18, 26, -12);
+    group.add(moon);
+    const bounce = new THREE.DirectionalLight(0x2a3a4a, 0.28);
+    bounce.name = 'moonBounce';
+    bounce.position.set(16, 9, 18);
+    group.add(bounce);
+  }
+
+  /* Lit stepping stones from the middle of a room to each way out, so the route
+   * is visible without turning the horror into a torch-lit corridor. */
+  function addPathways(THREE, group, anchors, location) {
+    if (location === 'Old Bridge') return; // the crossing is already the path
+    const geo = new THREE.BoxGeometry(0.62, 0.07, 0.46);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x707c86, emissive: 0x2f5a6e, emissiveIntensity: 1.05, roughness: 0.95,
+    });
+    (anchors || []).forEach((a) => {
+      if (!a || String(a.action || '').indexOf('go ') !== 0) return;
+      const len = Math.hypot(a.x, a.z);
+      if (len < 3) return;
+      const steps = Math.min(14, Math.max(3, Math.round(len / 1.9)));
+      for (let i = 1; i < steps; i += 1) {
+        const t = i / steps;
+        const stone = new THREE.Mesh(geo, mat);
+        stone.position.set(a.x * t, 0.04, a.z * t);
+        stone.rotation.y = Math.atan2(a.x, a.z) + (i % 2 ? 0.12 : -0.12);
+        group.add(stone);
+      }
+    });
+  }
+
   const BUILDERS = {
     Beach: buildBeach,
     Jungle: buildJungle,
@@ -762,6 +797,8 @@
       if (!fn) throw new Error('Unknown location: ' + location);
       const kit = fn(THREE, quality || 'medium');
       kit.location = location;
+      addMoonlight(THREE, kit.group);
+      addPathways(THREE, kit.group, kit.anchors, location);
       return kit;
     },
     locations: Object.keys(BUILDERS),

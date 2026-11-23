@@ -8,7 +8,7 @@
     const doc = root.document;
     const handlers = opts.handlers || {};
     const $ = (id) => doc.getElementById(id);
-    const screens = ['menu', 'settings', 'credits', 'end', 'pause'];
+    const screens = ['menu', 'settings', 'credits', 'end', 'pause', 'survivor'];
     let sayTimer = 0;
     let promptKeyDefault = 'E';
 
@@ -85,6 +85,16 @@
         el.innerHTML = list
           .map((item) => '<span class="chip ' + item + '">' + item + '</span>')
           .join('');
+      },
+      guidance(info) {
+        const arrow = $('guide-arrow');
+        const text = $('guide-text');
+        const meta = $('guide-meta');
+        if (arrow && info && typeof info.angle === 'number') {
+          arrow.style.transform = 'rotate(' + info.angle.toFixed(3) + 'rad)';
+        }
+        if (text) text.textContent = (info && info.text) || '';
+        if (meta) meta.textContent = (info && info.meta) || '';
       },
       prompt(text) {
         const el = $('prompt');
@@ -193,6 +203,41 @@
       });
     }
 
+    /* ------------------------------------------------- survivor creation */
+    const survivor = {
+      open(prefill) {
+        show('survivor');
+        survivor.error('');
+        const input = $('survivor-name');
+        if (input) {
+          input.value = prefill || '';
+          setTimeout(() => { try { input.focus(); } catch (e) { /* ignore */ } }, 60);
+        }
+      },
+      close() { survivor.error(''); },
+      error(msg) {
+        const el = $('survivor-error');
+        if (!el) return;
+        if (!msg) { el.classList.remove('show'); el.textContent = ''; return; }
+        el.textContent = msg;
+        el.classList.add('show');
+      },
+      value() {
+        const input = $('survivor-name');
+        return input ? input.value : '';
+      },
+      onSubmit(fn) {
+        const form = $('form-survivor');
+        if (form) {
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            fn(survivor.value());
+          });
+        }
+      },
+      onBack(fn) { bind('survivor-back', fn); },
+    };
+
     /* ------------------------------------------------------------ wiring */
     const bind = (id, fn) => {
       const el = $(id);
@@ -215,7 +260,7 @@
 
     return {
       show, hideScreens, setBoot, bootDone, fatal,
-      hud, flashDamage, lightning, fade, end, touch, joystick,
+      hud, survivor, flashDamage, lightning, fade, end, touch, joystick,
       setContinueMeta, readSettings, bindSettings,
       get promptKey() { return promptKeyDefault; },
     };

@@ -1,175 +1,144 @@
 # Mystery Island — The Lost Lighthouse (3D)
 
-A first-person survival horror remake of the original terminal game. Same island,
-same five locations, same rope, same lantern, same energy — rebuilt as a browser
-game for desktop and mobile.
+A third-person survival horror game in the browser. You wake on a wrecked beach,
+find a rope and a lantern, cross a broken bridge and light the lighthouse beacon
+before your energy runs out.
 
-The original CLI game is untouched and still runs. See `../easy-mystery-island/`.
+This folder is the 3D remake. The original Python CLI in `../easy-mystery-island/`
+is untouched and still runs.
 
----
+**Status: prototype.** Automated tests pass. It has not yet been run in a real
+browser or on a phone — see `VERIFICATION.md`.
 
 ## Play it
 
-**Fastest:** open `dist/index.html` in a browser. It is a single 749 KB file with
-Three.js inlined. No server, no build, no network, no dependencies. Double-click
-it from a USB stick and it works.
-
-**From source (development):**
-
 ```bash
-cd mystery-island-3d
+# no server needed: the built game is one self-contained file
+open dist/index.html        # macOS   (Linux: xdg-open, Windows: start)
+
+# or serve it, which is what a phone needs
 python3 -m http.server 8000
-# then open http://localhost:8000
+# then open http://localhost:8000/dist/index.html
 ```
 
-On a phone, use `http://<your-computer-ip>:8000` on the same Wi-Fi.
+On a phone, use the laptop's LAN address: `http://192.168.x.x:8000/dist/index.html`.
 
-**Rebuild the single-file bundle after editing `src/`:**
-
-```bash
-node build.mjs        # writes dist/index.html and fails if anything external slipped in
-```
-
----
+URL flags: `?debug=1` shows fps and room state, `?selftest=1` runs twelve
+in-browser checks and prints the result on screen.
 
 ## Controls
 
-| Action | Desktop | Mobile |
-|---|---|---|
-| Move | `W A S D` or arrow keys | left thumb, drag anywhere on the left half |
-| Look | mouse (click the canvas to lock the pointer) | right thumb, drag anywhere on the right half |
-| Interact | `E` | **Use** button |
-| Flashlight | `F` | **Lamp** button |
-| Pause | `Esc` | **II** button |
-| Mute | `M` | in Settings |
+**Desktop**
 
-A prompt appears at the bottom of the screen when you are close enough to
-something. Nothing happens automatically: you choose every move, exactly like the
-CLI, and every move costs one energy.
+| Input | Action |
+| --- | --- |
+| `W A S D` or arrows | Move, relative to the camera |
+| `Shift` | Run |
+| Mouse drag, or click to lock the pointer | Orbit the camera |
+| `E` | Use whatever is in reach |
+| `F` | Lamp on or off |
+| `Esc` | Pause |
 
----
+The camera drifts back behind the survivor on its own when you stop steering it.
+
+**Mobile**
+
+| Input | Action |
+| --- | --- |
+| Left half of the screen | Virtual stick — move |
+| Right half | Drag to orbit the camera |
+| Push the stick to the edge | Run |
+| `Use` / `Lamp` / `II` buttons | Interact, lamp, pause |
 
 ## What is in the game
 
-**Five locations**, each generated in code rather than loaded from model files, so
-there is nothing to 404: the storm beach and its wreck, the jungle with its
-watcher, the cave where the lantern waits, the broken bridge over the channel, and
-the lighthouse.
+**Third person.** The survivor is a visible figure built from primitives — head,
+torso, arms, legs, backpack, a lamp in the right hand. The gait is driven by
+distance travelled, not by a timer, so the feet move at the speed the body
+moves: walk at 2.7 m/s, run at 5.2 m/s, and the character leans into a run, bobs,
+and swings arms opposite to legs. Collecting an item reaches out with the right
+arm; taking damage rocks the body. The camera sits 5.6 m behind and 2.5 m up,
+eases into place, and never clips through the floor.
 
-**Rules identical to the original.** 5 energy, 1 per move, a refused action costs
-nothing, rope in the Jungle, lantern in the Cave, the bridge needs the rope, the
-beacon needs the lantern, one rest at the beach campfire for +2, swimming costs 3
-and drowns you if you cannot pay, calling for help loses the game. The rules module
-is a line-for-line port of `game.py` and is tested against it directly (see
-*Testing*).
+**Five connected rooms.** Beach, Jungle, Cave, Old Bridge, Lighthouse, with the
+same geography and the same exits as the CLI.
 
-**Horror systems.**
-- Synthesised audio: wind and rain beds per location, footsteps that change with
-  the surface, whispers, thunder, cave drips, creaks, a heartbeat that quickens as
-  energy drains, a scream and a beacon roar. No audio files, nothing to load.
-- Darkness and fog tuned per room; the cave is close to unlit until you find the
-  lantern.
-- A failing torch: below 3 energy the beam stutters.
-- Camera shake on scares and on damage.
-- The watcher in the jungle: linger too long and something closes on you. If it
-  reaches you it takes 1 energy and drives you back to the Beach. That is a real
-  consequence in the real state, not a cutscene.
-- Two story-tied jump scares: the lantern in the cave, and the bridge when you try
-  to cross without a rope.
+**Navigation.** A minimap bottom-right shows the five rooms and the paths between
+them, the room you are in, your position inside it, and a dashed route to the
+next goal. Above it, an arrow points at the immediate next thing to do with a
+distance in metres and a compass direction. The objective line names the
+ultimate goal. Room names are announced on arrival. The map shows direction, not
+secrets: it never marks a horror event.
 
-**Systems.** Main menu, continue, settings (volume, brightness, look sensitivity,
-quality, subtitles), pause, save on every action, win and lose sequences, and
-adaptive resolution that drops pixels rather than frames on a slow phone.
+**Survivor creation.** A proper screen replaces the browser prompt: an intro, a
+name field with validation (2–20 characters, letters, spaces, hyphens,
+apostrophes), an inline error, and a fade into play. The name is used in the HUD,
+in story events and on the ending screens.
 
-**Diagnostics.** Add `?debug=1` for an fps/location/pixel-ratio readout. Add
-`?selftest=1` to run the in-browser self-test panel (12 checks: renderer, rules,
-win path, bridge gate, all five locations, audio, save).
+**Visibility.** Moonlight, lifted ambient light, thinner fog, and a trail of
+faintly glowing stones from the centre of every room to each exit. Interactive
+objects are emissive. The lamp is useful without being the only way to see.
 
----
+**Survival.** Five energy, one move per room transition, one campfire rest, a
+swim gamble at the bridge, and the watcher in the jungle that costs you energy
+and drives you back to the beach.
 
 ## Architecture
 
 ```
-index.html            markup, CSS, screen definitions
-build.mjs             inlines src/*.js + vendor/three.min.js → dist/index.html
-vendor/three.min.js   Three.js r157, vendored (no CDN, no network)
-src/
-  rules.js      pure game rules — no DOM, no Three.js, no audio
-  world.js      procedural geometry for the five locations
-  player.js     first-person camera, movement, collision, flashlight
-  controls.js   keyboard, pointer lock, touch joystick
-  audio.js      Web Audio synthesis — every sound is generated
-  horror.js     the director: scares, the watcher, atmosphere events
-  save.js       versioned save slot and settings, resilient to broken storage
-  ui.js         screens, HUD, prompts, settings wiring
-  main.js       state machine and game loop
-tests/
-  rules.test.mjs    rules + parity against the real Python engine
-  world.test.mjs    invariants: reachability, exits, items, spawns
-  save.test.mjs     save/settings reliability
-  offline.test.mjs  the bundle really is offline and dependency-pinned
-  dom.test.mjs      jsdom integration: full winning and losing runs
-  three-mock.mjs    structural Three.js stand-in for headless tests
-dist/index.html       the shipped single file
+index.html            markup and CSS for every screen
+build.mjs             inlines src/ and vendor/ into dist/index.html
+src/rules.js          pure game rules — a port of game.py, no DOM, no Three
+src/save.js           settings and one save slot, versioned and validated
+src/audio.js          synthesised ambience and effects (Web Audio, no files)
+src/world.js          the five rooms, lighting, collisions, interactables
+src/character.js      the survivor rig and its procedural animation
+src/player.js         third-person controller: movement, camera, lamp
+src/nav.js            roadmap graph, objectives, bearings, minimap drawing
+src/controls.js       keyboard, mouse, pointer lock, touch
+src/horror.js         scares, the watcher, scheduled events
+src/ui.js             screens, HUD, guidance, survivor creation
+src/main.js           state machine, game loop, wiring
+tests/                six suites plus a structural Three.js mock
 ```
 
-The rules engine has no knowledge of rendering, audio or input, which is why the
-same module can be tested headlessly and played in a browser. `main.js` is the
-only place that knows about all of them.
-
----
+Rules live in `rules.js` and know nothing about rendering. `nav.js` and
+`character.js` are likewise independent of the DOM, which is why they can be
+tested without a browser.
 
 ## Testing
 
 ```bash
-npm install            # jsdom, dev-only, for the DOM test
-npm test               # everything
-npm run test:rules     # 38  rules + parity with game.py
-npm run test:world     # 82  world invariants
-npm run test:save      # 41  save reliability
-npm run test:offline   # 14  bundle/offline/dependency checks
-npm run test:dom       # 36  full playthroughs in jsdom
-npm run test:python-cli # 31  the original CLI, untouched
+npm install          # dev only, for jsdom
+npm test             # 314 checks
 ```
 
-The parity layer inside `rules.test.mjs` is the important one: it replays nine
-command sequences through the real `game.py` with Python and through `src/rules.js`
-with Node, then compares every message and the final state. If the port ever drifts
-from the original, that test fails.
+| Suite | Checks | What it covers |
+| --- | --- | --- |
+| `rules.test.mjs` | 38 | Rules, plus nine command sequences replayed through the real `game.py` and compared message by message |
+| `world.test.mjs` | 82 | Every room builds; every anchor is reachable; exits match the rules both ways |
+| `save.test.mjs` | 41 | Round trip, corrupt slot, blocked storage, version mismatch |
+| `offline.test.mjs` | 14 | The bundle makes zero network requests |
+| `nav.test.mjs` | 44 | Objectives, routes, bearings, minimap projection |
+| `character.test.mjs` | 31 | Limbs, walk and run gaits, turning, pickup, flinch |
+| `dom.test.mjs` | 64 | Boots the game headlessly and plays a full winning run and a full losing run |
 
-`tests/dom.test.mjs` boots the actual game in jsdom with a structural Three.js
-mock and plays a complete winning run (Beach → Jungle → Cave → Bridge → Lighthouse
-→ beacon) and a complete losing run (drowning in the channel), asserting HUD state,
-inventory, energy, save and the end screens along the way.
-
----
+The original CLI keeps its own suite: `python3 -m unittest discover -s tests`
+from `../easy-mystery-island/` (31 tests).
 
 ## Dependencies
 
-| What | Version | Where |
-|---|---|---|
-| Three.js | 0.157.0 | vendored at `vendor/three.min.js`, sha256 `445798e31f78915517816443e59440b3ab575633c40c278e30b3ac9ea55fa0c0` |
-| jsdom | ^24 | dev only, for the DOM test |
-| Node | ≥ 18 | build and tests |
-| Python | ≥ 3.8 | only for the original CLI and the parity test |
-
-Runtime dependencies: **none**. No fonts, no textures, no audio files, no CDN.
-
----
+- Three.js **0.157.0**, vendored at `vendor/three.min.js`, inlined into `dist/`.
+  Nothing is fetched at runtime.
+- `jsdom` (dev only) for the headless integration test. The game itself has no
+  runtime dependencies.
 
 ## Known limitations
 
-- **Not yet verified in a real browser or on a real phone.** The logic is tested
-  hard, but rendering, audio and touch have only been exercised headlessly. See
-  `VERIFICATION.md` for exactly what has and has not been observed.
-- Lighting is tuned blind. If a room reads too dark or too bright, use Settings →
-  Brightness (40–160) rather than editing code.
-- Changing Quality applies resolution immediately; shadows switch on the next
-  location load.
-- No fall death on the bridge: invisible walls keep you on the planks, because
-  falling is not a loss condition in the original.
-- Swimming is always fatal on the intended route (energy at the bridge is always
-  2). That is faithful to the original, where the same is true.
-- The original CLI still reports both drowning and "call for help" as *ran out of
-  energy*. A patch for that is at `../mystery_island_patched/loss-reason.patch`;
-  the 3D version already reports the correct cause.
+- Not yet run in a browser or on a phone. Lighting balance, touch ergonomics,
+  audio unlock behaviour and jump-scare timing are all untuned by observation.
+- Lighting is tuned analytically, not by eye.
+- Quality changes take effect immediately for resolution; shadows change on the
+  next room load.
+- There is no falling off the bridge: the chasm is walled, because falling is not
+  a loss condition in the original game.

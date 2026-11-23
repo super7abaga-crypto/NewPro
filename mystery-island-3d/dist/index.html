@@ -119,6 +119,37 @@
   .end.lose h1{color:#e2806b}
   #fps{position:fixed;right:8px;bottom:6px;z-index:30;font-size:10px;color:rgba(232,226,214,.4);display:none}
   @media (max-width:520px){ .inv{max-width:56vw} #prompt{bottom:26%} }
+
+  /* ---------- survivor creation ---------- */
+  .survivor{background:radial-gradient(ellipse at 50% 20%, rgba(28,44,58,.55), rgba(4,6,9,.96) 62%)}
+  .surv-wrap{width:min(92vw,540px);margin:0 auto;text-align:left}
+  .surv-kicker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);opacity:.8;margin-bottom:10px}
+  .surv-title{font-family:Georgia,'Times New Roman',serif;font-size:clamp(26px,7vw,40px);line-height:1.1;margin:0 0 14px;color:#f2ece2}
+  .surv-intro{font-size:13.5px;line-height:1.75;color:rgba(226,236,244,.72);margin:0 0 22px}
+  .surv-label{display:block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(226,236,244,.6);margin-bottom:8px}
+  #survivor-name{width:100%;background:rgba(12,18,24,.9);border:1px solid rgba(140,180,205,.28);
+    border-radius:12px;padding:14px 15px;color:#eef6fb;font-size:16px;outline:none;transition:border-color .15s}
+  #survivor-name:focus{border-color:rgba(255,168,82,.7);box-shadow:0 0 0 3px rgba(255,168,82,.12)}
+  .surv-hint{font-size:11.5px;color:rgba(200,215,225,.45);margin-top:8px;line-height:1.5}
+  .survivor .btn.primary{width:100%;margin-top:18px}
+  .survivor .linkbtn{display:block;margin:14px auto 0}
+  .survivor .err{margin-top:12px}
+
+  /* ---------- roadmap: minimap + objective arrow ---------- */
+  #roadmap{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;
+    align-items:flex-end;pointer-events:none;z-index:13}
+  #minimap{width:132px;height:132px;border-radius:14px;border:1px solid rgba(150,180,200,.22);
+    background:rgba(6,10,14,.8);box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  #guide{display:flex;align-items:center;gap:9px;background:rgba(8,12,16,.82);
+    border:1px solid rgba(150,180,200,.2);border-radius:12px;padding:9px 12px;max-width:250px;
+    backdrop-filter:blur(6px)}
+  #guide-arrow{font-size:15px;color:var(--orange);transition:transform .12s linear;
+    transform-origin:50% 50%;flex:0 0 auto;line-height:1}
+  #guide-text{font-size:12px;line-height:1.35;color:#e6eef4;font-weight:600}
+  #guide-meta{font-size:10.5px;color:rgba(200,215,225,.55);margin-top:2px;letter-spacing:.04em}
+  @media (max-width:520px){
+    #roadmap{right:10px;bottom:118px;transform:scale(.88);transform-origin:bottom right}
+  }
 </style>
 </head>
 <body>
@@ -203,6 +234,29 @@
   </div>
 </section>
 
+<!-- ===================== SURVIVOR CREATION ===================== -->
+<section id="screen-survivor" class="screen survivor">
+  <div class="surv-wrap">
+    <div class="surv-kicker">Before the storm</div>
+    <h1 class="surv-title">Who came ashore?</h1>
+    <p class="surv-intro">
+      The boat broke up on the reef an hour before dawn. You woke in the surf with
+      salt in your throat and nothing but the clothes you swam in. The lighthouse
+      on the ridge is dark, and no ship will look for you until that beacon burns.
+    </p>
+    <form id="form-survivor" autocomplete="off">
+      <label class="surv-label" for="survivor-name">Survivor name</label>
+      <input id="survivor-name" name="survivor-name" type="text" maxlength="20"
+             autocapitalize="words" autocorrect="off" spellcheck="false"
+             placeholder="Type your name" aria-describedby="survivor-hint survivor-error" />
+      <div class="surv-hint" id="survivor-hint">Two to twenty characters. Letters, spaces, hyphens and apostrophes.</div>
+      <div class="err" id="survivor-error"></div>
+      <button class="btn primary" id="survivor-go" type="submit">Step onto the beach</button>
+    </form>
+    <button class="linkbtn" id="survivor-back" type="button">Back to the title screen</button>
+  </div>
+</section>
+
 <!-- ===================== HUD ===================== -->
 <div id="hud">
   <div class="hud-top">
@@ -213,6 +267,14 @@
     <div class="energy" id="hud-energy"></div>
   </div>
   <div class="inv" id="hud-inventory"></div>
+  <div id="roadmap">
+    <canvas id="minimap" width="132" height="132" aria-label="Island map"></canvas>
+    <div id="guide">
+      <div id="guide-arrow">&#9650;</div>
+      <div id="guide-text">Find the rope in the Jungle</div>
+      <div id="guide-meta">12 m north</div>
+    </div>
+  </div>
   <div id="prompt"><b id="prompt-key">E</b> <span id="prompt-text"></span></div>
   <div id="subtitle"></div>
 </div>
@@ -996,6 +1058,248 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
 </script>
 <script>
+/* ==== src/nav.js ==== */
+/* Mystery Island 3D — roadmap, objective guidance and minimap.
+ *
+ * Pure logic, no rendering side effects beyond the canvas it is handed, so the
+ * guidance can be tested without a browser. Nothing here reveals horror events:
+ * the roadmap only ever points at items and exits that the rules already expose.
+ */
+(function (root) {
+  'use strict';
+
+  /* Where each room sits on the roadmap, in 0..1 space (y grows southwards). */
+  const MAP = {
+    Beach: { x: 0.30, y: 0.87 },
+    Jungle: { x: 0.30, y: 0.62 },
+    Cave: { x: 0.30, y: 0.37 },
+    'Old Bridge': { x: 0.58, y: 0.37 },
+    Lighthouse: { x: 0.82, y: 0.16 },
+  };
+
+  const ORDER = ['Beach', 'Jungle', 'Cave', 'Old Bridge', 'Lighthouse'];
+
+  const DIR_LABEL = {
+    north: 'north', south: 'south', east: 'east', west: 'west',
+  };
+
+  function rules() {
+    return root.MI.rules;
+  }
+
+  function neighbours(room) {
+    const data = rules().LOCATIONS[room];
+    if (!data) return [];
+    return Object.keys(data.exits).map((dir) => ({ dir, to: data.exits[dir].to }));
+  }
+
+  /* Breadth-first route between rooms, used for the dashed roadmap trail. */
+  function pathBetween(from, to) {
+    if (!MAP[from] || !MAP[to]) return [];
+    if (from === to) return [from];
+    const queue = [[from]];
+    const seen = {};
+    seen[from] = true;
+    while (queue.length) {
+      const path = queue.shift();
+      const last = path[path.length - 1];
+      const next = neighbours(last);
+      for (let i = 0; i < next.length; i += 1) {
+        const hop = next[i];
+        if (seen[hop.to]) continue;
+        const candidate = path.concat(hop.to);
+        if (hop.to === to) return candidate;
+        seen[hop.to] = true;
+        queue.push(candidate);
+      }
+    }
+    return [];
+  }
+
+  /* The overall goal, derived only from what the player is carrying. */
+  function goal(state) {
+    const has = (item) => state.inventory.indexOf(item) !== -1;
+    if (!has('rope')) {
+      return {
+        room: 'Jungle', anchor: 'item-rope', kind: 'item', short: 'Rope',
+        label: 'Find the rope in the Jungle',
+      };
+    }
+    if (!has('lantern')) {
+      return {
+        room: 'Cave', anchor: 'item-lantern', kind: 'item', short: 'Lantern',
+        label: 'Find the lantern in the Cave',
+      };
+    }
+    return {
+      room: 'Lighthouse', anchor: 'beacon', kind: 'final', short: 'Beacon',
+      label: 'Cross the bridge and light the beacon',
+    };
+  }
+
+  /* The immediate thing to walk to: an exit until you stand in the goal room. */
+  function step(state) {
+    const target = goal(state);
+    if (state.location === target.room) {
+      return {
+        room: target.room, anchor: target.anchor, kind: target.kind,
+        short: target.short, label: target.label, sameRoom: true,
+        path: [state.location], goal: target,
+      };
+    }
+    const path = pathBetween(state.location, target.room);
+    if (path.length < 2) {
+      return Object.assign({}, target, { sameRoom: false, path });
+    }
+    const nextRoom = path[1];
+    const exit = neighbours(state.location).filter((n) => n.to === nextRoom)[0];
+    return {
+      room: nextRoom,
+      anchor: 'exit-' + exit.dir,
+      kind: target.kind,
+      short: target.short,
+      sameRoom: false,
+      path,
+      goal: target,
+      label: 'Head ' + (DIR_LABEL[exit.dir] || exit.dir) + ' towards the ' + nextRoom,
+    };
+  }
+
+  /* World bearing to a point, 0 = north (-z), growing clockwise. */
+  function bearing(from, to) {
+    return Math.atan2(to.x - from.x, from.z - to.z);
+  }
+
+  /* Rotation for an up-pointing arrow so it points at the target on screen. */
+  function arrowAngle(from, to, cameraYaw) {
+    return bearing(from, to) + (cameraYaw || 0);
+  }
+
+  function distance(from, to) {
+    return Math.hypot(to.x - from.x, to.z - from.z);
+  }
+
+  function compass(radians) {
+    const deg = ((radians * 180) / Math.PI + 360) % 360;
+    const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+    return names[Math.round(deg / 45) % 8];
+  }
+
+  /* Project a world position into its room's patch of the roadmap. */
+  function projectToMap(room, point) {
+    const node = MAP[room];
+    if (!node) return { x: 0.5, y: 0.5 };
+    const spread = 0.085;
+    const x = node.x + ((point ? point.x : 0) / 46) * spread;
+    const y = node.y + ((point ? point.z : 0) / 46) * spread;
+    return { x, y };
+  }
+
+  /* ------------------------------------------------------------------ draw */
+  function drawMinimap(ctx, opts) {
+    if (!ctx) return;
+    const size = opts.size || 132;
+    const state = opts.state;
+    const player = opts.player || { x: 0, z: 0 };
+    const guidance = opts.step || step(state);
+    const dpr = opts.dpr || 1;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+
+    ctx.fillStyle = 'rgba(6, 10, 14, 0.82)';
+    ctx.fillRect(0, 0, size, size);
+
+    const at = (p) => ({ x: p.x * size, y: p.y * size });
+
+    /* roads */
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(120, 150, 170, 0.30)';
+    ORDER.forEach((room) => {
+      neighbours(room).forEach((hop) => {
+        if (ORDER.indexOf(hop.to) < ORDER.indexOf(room)) return;
+        const a = at(MAP[room]);
+        const b = at(MAP[hop.to]);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      });
+    });
+
+    /* the route still to walk, dashed and warm */
+    const trail = guidance.path || [];
+    if (trail.length > 1) {
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(255, 168, 82, 0.85)';
+      ctx.beginPath();
+      trail.forEach((room, i) => {
+        const p = at(MAP[room]);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* rooms */
+    ORDER.forEach((room) => {
+      const p = at(MAP[room]);
+      const here = room === state.location;
+      const done = trail.indexOf(room) !== -1 && !here;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, here ? 5.5 : 3.6, 0, Math.PI * 2);
+      ctx.fillStyle = here ? '#ffa852' : done ? 'rgba(255, 168, 82, 0.55)' : 'rgba(150, 175, 190, 0.55)';
+      ctx.fill();
+      if (here) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 168, 82, 0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.fillStyle = here ? 'rgba(255, 214, 170, 0.95)' : 'rgba(150, 175, 190, 0.6)';
+      ctx.textAlign = 'center';
+      const short = room === 'Old Bridge' ? 'Bridge' : room;
+      ctx.fillText(short, p.x, p.y + 16);
+    });
+
+    /* objective marker inside the current room */
+    if (guidance.sameRoom && opts.anchor) {
+      const spot = at(projectToMap(state.location, opts.anchor));
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#8ef0c0';
+      ctx.fill();
+    }
+
+    /* the player */
+    const me = at(projectToMap(state.location, player));
+    ctx.beginPath();
+    ctx.arc(me.x, me.y, 3.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
+  }
+
+  root.MI = root.MI || {};
+  root.MI.nav = {
+    MAP, ORDER, neighbours, pathBetween, goal, step,
+    bearing, arrowAngle, distance, compass, projectToMap, drawMinimap,
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
 /* ==== src/world.js ==== */
 /* Mystery Island 3D — the five locations, built procedurally.
  *
@@ -1169,8 +1473,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return {
       group, colliders, anchors, animated,
       surface: 'sand',
-      fog: { color: 0x0a1016, density: 0.042 },
-      ambient: { color: 0x22303c, intensity: 0.42, sky: 0x2a3a48, ground: 0x0b0d10 },
+      fog: { color: 0x0a1016, density: 0.030 },
+      ambient: { color: 0x22303c, intensity: 0.62, sky: 0x2a3a48, ground: 0x0b0d10 },
       flashlightNeed: 0.4,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -1298,8 +1602,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return {
       group, colliders, anchors, animated, figure,
       surface: 'leaves',
-      fog: { color: 0x06110c, density: 0.075 },
-      ambient: { color: 0x1b3327, intensity: 0.34, sky: 0x1c3a2a, ground: 0x060a08 },
+      fog: { color: 0x06110c, density: 0.050 },
+      ambient: { color: 0x1b3327, intensity: 0.55, sky: 0x1c3a2a, ground: 0x060a08 },
       flashlightNeed: 0.6,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -1412,8 +1716,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return {
       group, colliders, anchors, animated,
       surface: 'rock',
-      fog: { color: 0x02040a, density: 0.115 },
-      ambient: { color: 0x0d1016, intensity: 0.12, sky: 0x0a0d12, ground: 0x020203 },
+      fog: { color: 0x02040a, density: 0.075 },
+      ambient: { color: 0x0d1016, intensity: 0.34, sky: 0x1a2430, ground: 0x020203 },
       flashlightNeed: 1,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -1515,8 +1819,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return {
       group, colliders, anchors, animated,
       surface: 'wood',
-      fog: { color: 0x05080c, density: 0.06 },
-      ambient: { color: 0x1a2230, intensity: 0.3, sky: 0x1d2a36, ground: 0x04060a },
+      fog: { color: 0x05080c, density: 0.042 },
+      ambient: { color: 0x1a2230, intensity: 0.50, sky: 0x1d2a36, ground: 0x04060a },
       flashlightNeed: 0.5,
       clamp(pos) {
         if (Math.abs(pos.z) < 6.2) {
@@ -1624,8 +1928,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return {
       group, colliders, anchors, animated,
       surface: 'rock',
-      fog: { color: 0x070a0f, density: 0.05 },
-      ambient: { color: 0x243040, intensity: 0.36, sky: 0x24384a, ground: 0x080a0d },
+      fog: { color: 0x070a0f, density: 0.038 },
+      ambient: { color: 0x243040, intensity: 0.55, sky: 0x24384a, ground: 0x080a0d },
       flashlightNeed: 0.5,
       clamp(pos) {
         const r = Math.hypot(pos.x, pos.z);
@@ -1746,6 +2050,41 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return group;
   }
 
+  /* A cold moon overhead: gives every room shape and contrast without the lamp. */
+  function addMoonlight(THREE, group) {
+    const moon = new THREE.DirectionalLight(0xa8c4e0, 0.62);
+    moon.name = 'moon';
+    moon.position.set(-18, 26, -12);
+    group.add(moon);
+    const bounce = new THREE.DirectionalLight(0x2a3a4a, 0.28);
+    bounce.name = 'moonBounce';
+    bounce.position.set(16, 9, 18);
+    group.add(bounce);
+  }
+
+  /* Lit stepping stones from the middle of a room to each way out, so the route
+   * is visible without turning the horror into a torch-lit corridor. */
+  function addPathways(THREE, group, anchors, location) {
+    if (location === 'Old Bridge') return; // the crossing is already the path
+    const geo = new THREE.BoxGeometry(0.62, 0.07, 0.46);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x707c86, emissive: 0x2f5a6e, emissiveIntensity: 1.05, roughness: 0.95,
+    });
+    (anchors || []).forEach((a) => {
+      if (!a || String(a.action || '').indexOf('go ') !== 0) return;
+      const len = Math.hypot(a.x, a.z);
+      if (len < 3) return;
+      const steps = Math.min(14, Math.max(3, Math.round(len / 1.9)));
+      for (let i = 1; i < steps; i += 1) {
+        const t = i / steps;
+        const stone = new THREE.Mesh(geo, mat);
+        stone.position.set(a.x * t, 0.04, a.z * t);
+        stone.rotation.y = Math.atan2(a.x, a.z) + (i % 2 ? 0.12 : -0.12);
+        group.add(stone);
+      }
+    });
+  }
+
   const BUILDERS = {
     Beach: buildBeach,
     Jungle: buildJungle,
@@ -1761,6 +2100,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       if (!fn) throw new Error('Unknown location: ' + location);
       const kit = fn(THREE, quality || 'medium');
       kit.location = location;
+      addMoonlight(THREE, kit.group);
+      addPathways(THREE, kit.group, kit.anchors, location);
       return kit;
     },
     locations: Object.keys(BUILDERS),
@@ -1770,14 +2111,230 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
 </script>
 <script>
-/* ==== src/player.js ==== */
-/* Mystery Island 3D — first-person player: movement, collision, flashlight. */
+/* ==== src/character.js ==== */
+/* Mystery Island 3D — the visible survivor.
+ *
+ * Built from primitives so the game keeps zero asset dependencies, and animated
+ * procedurally: the walk cycle is driven by distance travelled, so the feet
+ * always move at the speed the body actually moves. No sliding.
+ */
 (function (root) {
   'use strict';
 
-  const EYE_HEIGHT = 1.68;
-  const SPEED = 3.4;
-  const STRIDE = 2.05;
+  const SKIN = 0xb08a68;
+  const COAT = 0x3d4a3a;
+  const COAT_DARK = 0x2a3328;
+  const TROUSERS = 0x2b2b30;
+  const BOOT = 0x1a1614;
+  const HAIR = 0x1e1a17;
+  const PACK = 0x4a3a2a;
+
+  function create(opts) {
+    const THREE = opts.THREE;
+    const group = new THREE.Group();
+    group.name = 'survivor';
+
+    const mat = (color, extra) => new THREE.MeshStandardMaterial(Object.assign({
+      color, roughness: 0.92, metalness: 0.02, flatShading: true,
+    }, extra || {}));
+
+    const coatMat = mat(COAT);
+    const coatDarkMat = mat(COAT_DARK);
+    const skinMat = mat(SKIN);
+    const trouserMat = mat(TROUSERS);
+    const bootMat = mat(BOOT);
+    const hairMat = mat(HAIR);
+    const packMat = mat(PACK);
+
+    /* body sits inside a bob group so the whole torso can rise and fall */
+    const body = new THREE.Group();
+    body.name = 'body';
+    group.add(body);
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.62, 0.30), coatMat);
+    torso.position.y = 1.20;
+    torso.castShadow = true;
+    body.add(torso);
+
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.12, 0.26), coatDarkMat);
+    collar.position.y = 1.53;
+    body.add(collar);
+
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.40, 0.18), packMat);
+    pack.position.set(0, 1.24, 0.22);
+    body.add(pack);
+
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.10, 8), skinMat);
+    neck.position.y = 1.58;
+    body.add(neck);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.155, 12, 10), skinMat);
+    head.position.y = 1.72;
+    head.castShadow = true;
+    body.add(head);
+
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.163, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), hairMat);
+    hair.position.y = 1.735;
+    body.add(hair);
+
+    /* shoulders: each arm pivots from its own group so it can swing */
+    function limb(x, y, upperColor, lowerColor, upperLen, lowerLen, width) {
+      const pivot = new THREE.Group();
+      pivot.position.set(x, y, 0);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(width, upperLen, width), upperColor);
+      upper.position.y = -upperLen / 2;
+      upper.castShadow = true;
+      pivot.add(upper);
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(width * 0.9, lowerLen, width * 0.9), lowerColor);
+      lower.position.y = -upperLen - lowerLen / 2;
+      lower.castShadow = true;
+      pivot.add(lower);
+      return pivot;
+    }
+
+    const armL = limb(-0.34, 1.44, coatMat, skinMat, 0.30, 0.30, 0.13);
+    const armR = limb(0.34, 1.44, coatMat, skinMat, 0.30, 0.30, 0.13);
+    body.add(armL, armR);
+
+    const legL = limb(-0.14, 0.88, trouserMat, bootMat, 0.44, 0.42, 0.17);
+    const legR = limb(0.14, 0.88, trouserMat, bootMat, 0.44, 0.42, 0.17);
+    group.add(legL, legR);
+
+    /* the lantern the survivor carries, lit by the flashlight toggle */
+    const lampGroup = new THREE.Group();
+    lampGroup.position.set(0.30, 1.02, -0.10);
+    const lampGlass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.07, 0.14, 8),
+      new THREE.MeshStandardMaterial({ color: 0xffd79a, emissive: 0xffb64d, emissiveIntensity: 2.2, roughness: 0.4 })
+    );
+    lampGroup.add(lampGlass);
+    const lampGlow = new THREE.PointLight(0xffb64d, 3.2, 9, 1.6);
+    lampGlow.position.set(0, 0, 0);
+    lampGroup.add(lampGlow);
+    group.add(lampGroup);
+
+    const state = {
+      phase: 0,
+      speed: 0,
+      moving: false,
+      running: false,
+      facing: Math.PI,
+      pickup: 0,
+      hurt: 0,
+      lampOn: true,
+    };
+
+    const angleLerp = (a, b, t) => {
+      let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+      if (d < -Math.PI) d += Math.PI * 2;
+      return a + d * t;
+    };
+
+    /* ------------------------------------------------------------- update */
+    function update(dt, input) {
+      const speed = input && typeof input.speed === 'number' ? input.speed : 0;
+      const running = !!(input && input.running);
+      state.speed = speed;
+      state.running = running;
+      state.moving = speed > 0.15;
+
+      if (state.moving) {
+        // phase advances with distance, so feet match ground speed
+        state.phase += speed * dt * (running ? 2.1 : 2.7);
+      } else {
+        state.phase += dt * 0.8; // idle breathing
+      }
+
+      const gait = Math.min(1, speed / 2.4);
+      const swing = Math.sin(state.phase) * (running ? 0.95 : 0.62) * gait;
+
+      if (state.pickup > 0) {
+        state.pickup = Math.max(0, state.pickup - dt);
+        const t = 1 - state.pickup / 0.55;
+        const reach = Math.sin(Math.min(1, t) * Math.PI);
+        armR.rotation.x = -1.5 * reach;
+        armR.rotation.z = -0.25 * reach;
+      } else {
+        armR.rotation.x = swing * 0.85;
+        armR.rotation.z = 0;
+      }
+      armL.rotation.x = -swing * 0.85;
+      legL.rotation.x = swing;
+      legR.rotation.x = -swing;
+
+      const bob = state.moving ? Math.abs(Math.sin(state.phase)) * (running ? 0.085 : 0.045) : 0;
+      body.position.y = bob + (state.moving ? 0 : Math.sin(state.phase * 0.7) * 0.008);
+      body.rotation.x = (running ? -0.13 : -0.04) * gait;
+      body.rotation.z = Math.sin(state.phase) * 0.035 * gait;
+
+      if (state.hurt > 0) {
+        state.hurt = Math.max(0, state.hurt - dt);
+        body.rotation.x += Math.sin(state.hurt * 40) * 0.12;
+      }
+    }
+
+    function setFacing(radians, dt, snap) {
+      state.facing = snap ? radians : angleLerp(state.facing, radians, Math.min(1, (dt || 0.016) * 12));
+      group.rotation.y = state.facing;
+    }
+
+    function setPosition(x, z, y) {
+      group.position.set(x, typeof y === 'number' ? y : 0, z);
+    }
+
+    function playPickup() {
+      state.pickup = 0.55;
+    }
+
+    function flinch() {
+      state.hurt = 0.45;
+    }
+
+    function setLamp(on) {
+      state.lampOn = !!on;
+      lampGroup.visible = true;
+      lampGlow.intensity = on ? 3.2 : 0;
+      lampGlass.material.emissiveIntensity = on ? 2.2 : 0.05;
+    }
+
+    function setVisible(v) {
+      group.visible = !!v;
+    }
+
+    setLamp(true);
+    group.rotation.y = state.facing;
+
+    return {
+      group, body, armL, armR, legL, legR, lampGroup,
+      update, setFacing, setPosition, playPickup, flinch, setLamp, setVisible,
+      get facing() { return state.facing; },
+      get moving() { return state.moving; },
+      get phase() { return state.phase; },
+      state,
+    };
+  }
+
+  root.MI = root.MI || {};
+  root.MI.character = { create };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ==== src/player.js ==== */
+/* Mystery Island 3D — third-person player controller.
+ *
+ * The survivor is a real object in the world; the camera follows from behind and
+ * above, easing rather than snapping. Movement is camera-relative, the character
+ * turns to face the direction of travel, and the walk cycle is driven by the
+ * distance actually covered.
+ */
+(function (root) {
+  'use strict';
+
+  const WALK = 2.7;
+  const RUN = 5.2;
+  const RADIUS = 0.42;
+  const CAM_BACK = 5.6;
 
   function create(opts) {
     const THREE = opts.THREE;
@@ -1785,18 +2342,29 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const scene = opts.scene;
     const audio = opts.audio;
 
+    const character = root.MI && root.MI.character
+      ? root.MI.character.create({ THREE })
+      : null;
+    if (character) {
+      character.setVisible(true);
+      scene.add(character.group);
+    }
+
     const pos = new THREE.Vector3(0, 0, 12);
+
     const state = {
-      yaw: Math.PI,
-      pitch: 0,
-      speed: SPEED,
-      sensitivity: 0.0022,
+      facing: Math.PI,
+      cameraYaw: Math.PI,
+      orbit: 0,
+      pitch: 0.22,
+      speed: 0,
+      running: false,
       flashlightOn: true,
-      walked: 0,
-      bob: 0,
+      sensitivity: 0.0022,
       colliders: [],
       clamp: null,
       surface: 'sand',
+      walked: 0,
       lastStep: 0,
       shake: 0,
       shakeT: 0,
@@ -1804,168 +2372,219 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       t: 0,
     };
 
-    const flashlight = new THREE.SpotLight(0xfff2d0, 62, 30, 0.44, 0.55, 1.35);
-    flashlight.position.set(0, 2, 0);
-    flashlight.castShadow = opts.quality === 'high';
-    if (flashlight.shadow) {
-      flashlight.shadow.mapSize.width = 1024;
-      flashlight.shadow.mapSize.height = 1024;
-      flashlight.shadow.camera.far = 32;
-      flashlight.shadow.bias = -0.0012;
-    }
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const moveDir = new THREE.Vector3();
+    const camWanted = new THREE.Vector3();
+    const camNow = new THREE.Vector3(pos.x, 4, pos.z + CAM_BACK);
+    const lookAt = new THREE.Vector3();
+
+    /* the lamp the survivor carries */
+    const flashlight = new THREE.SpotLight(0xfff0cc, 46, 34, 0.52, 0.6, 1.2);
     const flashTarget = new THREE.Object3D();
     scene.add(flashlight, flashTarget);
     flashlight.target = flashTarget;
 
-    const glow = new THREE.PointLight(0xbfd4e6, 1.4, 7, 2);
-    scene.add(glow);
+    /* a soft local fill so the character always reads against the dark */
+    const fill = new THREE.PointLight(0xa8c0d6, 2.4, 10, 1.7);
+    scene.add(fill);
 
-    const forward = new THREE.Vector3();
-    const rightVec = new THREE.Vector3();
-    const nextPos = new THREE.Vector3();
+    const clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    function angleLerp(a, b, t) {
+      let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+      if (d < -Math.PI) d += Math.PI * 2;
+      return a + d * t;
+    }
 
     function setKit(kit) {
-      state.colliders = kit.colliders || [];
-      state.clamp = kit.clamp || null;
-      state.surface = kit.surface || 'sand';
+      state.colliders = (kit && kit.colliders) || [];
+      state.clamp = (kit && kit.clamp) || null;
+      state.surface = (kit && kit.surface) || 'sand';
+    }
+
+    function collide() {
+      for (let i = 0; i < state.colliders.length; i += 1) {
+        const c = state.colliders[i];
+        const dx = pos.x - c.x;
+        const dz = pos.z - c.z;
+        const d = Math.hypot(dx, dz);
+        const min = c.r + RADIUS;
+        if (d < min && d > 0.0001) {
+          const push = (min - d) / d;
+          pos.x += dx * push;
+          pos.z += dz * push;
+        }
+      }
+      if (state.clamp) state.clamp(pos);
     }
 
     function teleport(x, z, yaw) {
-      pos.set(x, 0, z);
-      if (typeof yaw === 'number') state.yaw = yaw;
-      state.walked = 0;
-      state.bob = 0;
+      pos.x = x;
+      pos.z = z;
+      pos.y = 0;
+      if (typeof yaw === 'number') {
+        state.facing = yaw;
+        state.cameraYaw = yaw;
+        state.orbit = 0;
+      }
+      if (character) {
+        character.setPosition(x, z);
+        character.setFacing(state.facing, 0, true);
+      }
+      placeCamera(1, true);
     }
 
-    function toggleFlashlight() {
-      state.flashlightOn = !state.flashlightOn;
-      flashlight.intensity = state.flashlightOn ? 62 : 0;
-      return state.flashlightOn;
+    function placeCamera(dt, snap) {
+      const yaw = state.cameraYaw + state.orbit;
+      forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+      const height = 2.4 + state.pitch * 3.4;
+      camWanted.set(
+        pos.x - forward.x * CAM_BACK,
+        Math.max(1.0, height),
+        pos.z - forward.z * CAM_BACK
+      );
+      const k = snap ? 1 : Math.min(1, dt * 7);
+      camNow.x += (camWanted.x - camNow.x) * k;
+      camNow.y += (camWanted.y - camNow.y) * k;
+      camNow.z += (camWanted.z - camNow.z) * k;
+
+      camera.position.copy(camNow);
+      lookAt.set(pos.x, 1.35, pos.z);
+      camera.lookAt(lookAt);
+
+      if (state.shakeT > 0) {
+        state.shakeT = Math.max(0, state.shakeT - dt);
+        const decay = Math.min(1, state.shakeT * 3);
+        const amount = state.shake * decay;
+        const t = state.t * 47;
+        camera.position.x += Math.sin(t) * amount * 0.16;
+        camera.position.y += Math.cos(t * 1.7) * amount * 0.13;
+        camera.rotation.z += Math.sin(t * 0.9) * amount * 0.03;
+        if (state.shakeT === 0) state.shake = 0;
+      }
+    }
+
+    function updateLights(dt) {
+      state.t += dt;
+      const fx = -Math.sin(state.facing);
+      const fz = -Math.cos(state.facing);
+      flashlight.position.set(pos.x, 2.05, pos.z);
+      flashTarget.position.set(pos.x + fx * 9, 0.5, pos.z + fz * 9);
+      fill.position.set(pos.x, 2.3, pos.z);
+
+      let strength = state.flashlightOn ? 1 : 0;
+      if (state.weak && state.flashlightOn) {
+        strength = 0.72 + Math.sin(state.t * 21) * 0.12 + Math.random() * 0.16;
+      }
+      flashlight.intensity = 46 * strength;
+      flashlight.visible = state.flashlightOn;
+      fill.intensity = 2.4 * (state.flashlightOn ? 1 : 0.6);
+      if (character) character.setLamp(state.flashlightOn);
+    }
+
+    function update(dt, input) {
+      const f = input && typeof input.forward === 'number' ? input.forward : 0;
+      const r = input && typeof input.right === 'number' ? input.right : 0;
+      const wantRun = !!(input && (input.run || input.sprint)) || Math.hypot(f, r) > 0.85;
+
+      if (input) {
+        if (input.lookX) state.orbit -= input.lookX * 0.9;
+        if (input.lookY) state.pitch = clampNum(state.pitch + input.lookY * 0.45, -0.05, 0.8);
+      }
+      state.orbit = clampNum(state.orbit, -2.4, 2.4);
+      state.orbit *= Math.max(0, 1 - dt * 1.5);
+
+      const yaw = state.cameraYaw + state.orbit;
+      forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+      right.set(-forward.z, 0, forward.x);
+
+      moveDir.set(0, 0, 0)
+        .addScaledVector(forward, f)
+        .addScaledVector(right, r);
+
+      const mag = Math.hypot(moveDir.x, moveDir.z);
+      const wanted = mag > 0.01 ? (wantRun ? RUN : WALK) * Math.min(1, mag) : 0;
+      state.speed += (wanted - state.speed) * Math.min(1, dt * 9);
+      if (state.speed < 0.02) state.speed = 0;
+      state.running = wantRun && state.speed > WALK * 1.05;
+
+      if (mag > 0.01) {
+        moveDir.x /= mag;
+        moveDir.z /= mag;
+        const desired = Math.atan2(-moveDir.x, -moveDir.z);
+        state.facing = angleLerp(state.facing, desired, Math.min(1, dt * 10));
+        pos.x += moveDir.x * state.speed * dt;
+        pos.z += moveDir.z * state.speed * dt;
+        collide();
+      }
+
+      state.cameraYaw = angleLerp(state.cameraYaw, state.facing, Math.min(1, dt * 2.4));
+
+      if (state.speed > 0.2) {
+        state.walked += state.speed * dt;
+        const stride = state.running ? 2.5 : 1.9;
+        if (state.walked - state.lastStep > stride) {
+          state.lastStep = state.walked;
+          if (audio) audio.footstep(state.surface);
+        }
+      }
+
+      if (character) {
+        character.setPosition(pos.x, pos.z);
+        character.setFacing(state.facing, dt, false);
+        character.update(dt, { speed: state.speed, running: state.running });
+      }
+
+      placeCamera(dt, false);
+      updateLights(dt);
+    }
+
+    function setSensitivity(v) {
+      state.sensitivity = 0.0022 * (v || 1);
     }
 
     function setFlashlight(on) {
       state.flashlightOn = !!on;
-      flashlight.intensity = state.flashlightOn ? 62 : 0;
+      if (character) character.setLamp(state.flashlightOn);
     }
 
-    function collide(next) {
-      const radius = 0.42;
-      state.colliders.forEach((c) => {
-        const dx = next.x - c.x;
-        const dz = next.z - c.z;
-        const dist = Math.hypot(dx, dz);
-        const min = c.r + radius;
-        if (dist < min && dist > 0.0001) {
-          next.x = c.x + (dx / dist) * min;
-          next.z = c.z + (dz / dist) * min;
-        }
-      });
-      if (state.clamp) state.clamp(next);
-      return next;
+    function toggleFlashlight() {
+      setFlashlight(!state.flashlightOn);
+      return state.flashlightOn;
     }
 
-    function update(dt, input) {
-      state.yaw -= input.lookX * state.sensitivity;
-      state.pitch -= input.lookY * state.sensitivity;
-      state.pitch = Math.max(-1.35, Math.min(1.35, state.pitch));
-
-      forward.set(Math.sin(state.yaw) * -1, 0, Math.cos(state.yaw) * -1);
-      rightVec.set(forward.z, 0, -forward.x);
-
-      let mx = 0;
-      let mz = 0;
-      if (input.forward) {
-        mx += forward.x * input.forward;
-        mz += forward.z * input.forward;
-      }
-      if (input.right) {
-        mx += rightVec.x * input.right;
-        mz += rightVec.z * input.right;
-      }
-      const mag = Math.hypot(mx, mz);
-      if (mag > 0.001) {
-        const step = (state.speed * dt) / Math.max(1, mag);
-        nextPos.copy(pos);
-        nextPos.x += mx * step;
-        nextPos.z += mz * step;
-        collide(nextPos);
-        const moved = Math.hypot(nextPos.x - pos.x, nextPos.z - pos.z);
-        pos.copy(nextPos);
-        state.walked += moved;
-        state.bob += moved * 3.6;
-        if (state.walked - state.lastStep > STRIDE) {
-          state.lastStep = state.walked;
-          if (audio) audio.footstep(state.surface);
-        }
-      } else {
-        state.bob += dt * 0.6;
-      }
-
-      const bobY = Math.sin(state.bob * 1.7) * 0.028;
-      camera.position.set(pos.x, EYE_HEIGHT + bobY, pos.z);
-      camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ');
-
-      state.t += dt;
-      // Fear: a short, decaying camera shake. Never strong enough to make the
-      // controls unreadable, always short enough to feel like an event.
-      if (state.shakeT > 0) {
-        state.shakeT = Math.max(0, state.shakeT - dt);
-        const decay = Math.min(1, state.shakeT * 2.6);
-        const amp = state.shake * decay;
-        const wobble = state.t * 46;
-        camera.position.x += Math.sin(wobble) * amp * 0.055;
-        camera.position.y += Math.cos(wobble * 1.7) * amp * 0.045;
-        camera.rotation.z = Math.sin(wobble * 0.9) * amp * 0.03;
-        if (state.shakeT === 0) state.shake = 0;
-      }
-
-      // A failing torch is scarier than a steady one.
-      if (state.weak) {
-        const flicker = 0.62 + Math.sin(state.t * 23.5) * 0.14 + Math.random() * 0.2;
-        flashlight.intensity = 62 * flicker;
-        glow.intensity = 1.4 * flicker;
-      } else if (flashlight.intensity !== 62) {
-        flashlight.intensity = 62;
-        glow.intensity = 1.4;
-      }
-
-      flashlight.position.set(pos.x, EYE_HEIGHT - 0.12, pos.z);
-      const dirX = Math.sin(state.yaw) * -1;
-      const dirZ = Math.cos(state.yaw) * -1;
-      const pitchLift = Math.sin(state.pitch);
-      flashTarget.position.set(
-        pos.x + dirX * 12,
-        EYE_HEIGHT - 0.12 + pitchLift * 12,
-        pos.z + dirZ * 12
-      );
-      flashTarget.updateMatrixWorld();
-      glow.position.set(pos.x, EYE_HEIGHT, pos.z);
-      input.lookX = 0;
-      input.lookY = 0;
+    function shake(amount, seconds) {
+      state.shake = Math.max(state.shake, amount);
+      state.shakeT = Math.max(state.shakeT, seconds);
     }
 
-    function lookDirection(out) {
-      const v = out || new THREE.Vector3();
-      v.set(Math.sin(state.yaw) * -1, Math.sin(state.pitch), Math.cos(state.yaw) * -1).normalize();
-      return v;
+    function setWeak(v) {
+      state.weak = !!v;
+    }
+
+    function flinch() {
+      if (character) character.flinch();
+    }
+
+    function celebrate() {
+      if (character) character.playPickup();
     }
 
     return {
-      state, pos, flashlight, setKit, teleport, update, toggleFlashlight, setFlashlight,
-      shake: (amount, seconds) => {
-        state.shake = Math.max(state.shake, Number(amount) || 1);
-        state.shakeT = Math.max(state.shakeT, Number(seconds) || 0.5);
-      },
-      setWeak: (on) => { state.weak = !!on; },
-      lookDirection, setSensitivity: (v) => { state.sensitivity = 0.0022 * (Number(v) || 1); },
-      setSpeed: (v) => { state.speed = SPEED * (Number(v) || 1); },
-      get yaw() { return state.yaw; },
-      set yaw(v) { state.yaw = v; },
+      pos,
+      state,
+      character,
+      setKit, teleport, update, setSensitivity,
+      setFlashlight, toggleFlashlight, shake, setWeak, flinch, celebrate,
+      get facing() { return state.facing; },
+      get cameraYaw() { return state.cameraYaw; },
+      get viewYaw() { return state.cameraYaw + state.orbit; },
+      get speed() { return state.speed; },
     };
   }
 
   root.MI = root.MI || {};
-  root.MI.player = { create, EYE_HEIGHT };
+  root.MI.player = { create, WALK, RUN };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -2403,7 +3022,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const doc = root.document;
     const handlers = opts.handlers || {};
     const $ = (id) => doc.getElementById(id);
-    const screens = ['menu', 'settings', 'credits', 'end', 'pause'];
+    const screens = ['menu', 'settings', 'credits', 'end', 'pause', 'survivor'];
     let sayTimer = 0;
     let promptKeyDefault = 'E';
 
@@ -2480,6 +3099,16 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
         el.innerHTML = list
           .map((item) => '<span class="chip ' + item + '">' + item + '</span>')
           .join('');
+      },
+      guidance(info) {
+        const arrow = $('guide-arrow');
+        const text = $('guide-text');
+        const meta = $('guide-meta');
+        if (arrow && info && typeof info.angle === 'number') {
+          arrow.style.transform = 'rotate(' + info.angle.toFixed(3) + 'rad)';
+        }
+        if (text) text.textContent = (info && info.text) || '';
+        if (meta) meta.textContent = (info && info.meta) || '';
       },
       prompt(text) {
         const el = $('prompt');
@@ -2588,6 +3217,41 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       });
     }
 
+    /* ------------------------------------------------- survivor creation */
+    const survivor = {
+      open(prefill) {
+        show('survivor');
+        survivor.error('');
+        const input = $('survivor-name');
+        if (input) {
+          input.value = prefill || '';
+          setTimeout(() => { try { input.focus(); } catch (e) { /* ignore */ } }, 60);
+        }
+      },
+      close() { survivor.error(''); },
+      error(msg) {
+        const el = $('survivor-error');
+        if (!el) return;
+        if (!msg) { el.classList.remove('show'); el.textContent = ''; return; }
+        el.textContent = msg;
+        el.classList.add('show');
+      },
+      value() {
+        const input = $('survivor-name');
+        return input ? input.value : '';
+      },
+      onSubmit(fn) {
+        const form = $('form-survivor');
+        if (form) {
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            fn(survivor.value());
+          });
+        }
+      },
+      onBack(fn) { bind('survivor-back', fn); },
+    };
+
     /* ------------------------------------------------------------ wiring */
     const bind = (id, fn) => {
       const el = $(id);
@@ -2610,7 +3274,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
     return {
       show, hideScreens, setBoot, bootDone, fatal,
-      hud, flashDamage, lightning, fade, end, touch, joystick,
+      hud, survivor, flashDamage, lightning, fade, end, touch, joystick,
       setContinueMeta, readSettings, bindSettings,
       get promptKey() { return promptKeyDefault; },
     };
@@ -2900,6 +3564,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const before = rs.location;
     const msg = rules.applyAction(rs, anchor.action);
 
+    if (player && /^(take|pick up)/.test(String(anchor.action || ''))) player.celebrate();
     if (ui) ui.hud.say(msg, 4600);
     syncHud();
 
@@ -2991,20 +3656,28 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     if (controls) controls.release();
   }
 
-  function newGame() {
-    startGame(promptName());
+  /* The name is collected on the in-game survivor screen, not a browser prompt. */
+  const NAME_PATTERN = /^[A-Za-z][A-Za-z' -]{1,19}$/;
+
+  function openSurvivor() {
+    if (audio) { audio.init(); audio.resume(); }
+    ui.survivor.open('');
   }
 
-  function promptName() {
-    // Keep it frictionless: the CLI asks for a name, so do the same, but a
-    // blank answer is fine and falls back to "Player".
-    let name = '';
-    try {
-      name = root.prompt('What is your name, survivor?', '') || '';
-    } catch (err) {
-      name = '';
+  function submitSurvivor(raw) {
+    const name = String(raw || '').trim().replace(/\s+/g, ' ');
+    if (!name) { ui.survivor.error('Enter a name so the story can address you.'); return; }
+    if (name.length < 2) { ui.survivor.error('A name needs at least two letters.'); return; }
+    if (!NAME_PATTERN.test(name)) {
+      ui.survivor.error("Use letters, spaces, hyphens or apostrophes. No numbers or symbols.");
+      return;
     }
-    return name;
+    ui.survivor.close();
+    startGame(name);
+  }
+
+  function newGame() {
+    openSurvivor();
   }
 
   function continueGame() {
@@ -3043,8 +3716,55 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
 
   /* ---------------------------------------------------------------- loop */
+  let frameCount = 0;
+  let minimapCtx = null;
+
+  function grabMinimap() {
+    if (minimapCtx) return;
+    try {
+      const canvas = root.document.getElementById('minimap');
+      if (canvas && canvas.getContext) minimapCtx = canvas.getContext('2d');
+    } catch (err) {
+      minimapCtx = null;
+    }
+  }
+
+  /* Points at the next thing worth walking to, and keeps the roadmap honest. */
+  function updateGuidance() {
+    if (!rs || !ui || !MI.nav || !player) return;
+    const guidance = MI.nav.step(rs);
+    const list = (kit && kit.anchors) || [];
+    const anchor = list.filter((a) => a.id === guidance.anchor)[0] || null;
+
+    let angle = 0;
+    let meta = guidance.sameRoom ? 'right here' : 'towards the ' + guidance.room;
+    if (anchor) {
+      const world = MI.nav.bearing(player.pos, anchor);
+      angle = world + (player.viewYaw || player.cameraYaw || 0);
+      const metres = Math.max(1, Math.round(MI.nav.distance(player.pos, anchor)));
+      meta = metres + ' m ' + MI.nav.compass(world);
+    }
+    ui.hud.guidance({ angle, text: guidance.label, meta });
+    ui.hud.objective(guidance.goal ? guidance.goal.label : guidance.label);
+
+    if (frameCount % 6 === 0) {
+      grabMinimap();
+      if (minimapCtx) {
+        MI.nav.drawMinimap(minimapCtx, {
+          size: 132,
+          dpr: root.devicePixelRatio || 1,
+          state: rs,
+          player: player.pos,
+          step: guidance,
+          anchor,
+        });
+      }
+    }
+  }
+
   function frame(now) {
     root.requestAnimationFrame(frame);
+    frameCount += 1;
     const t = now / 1000;
     let dt = last ? t - last : 0.016;
     last = t;
@@ -3056,6 +3776,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       kit.update(dt, t);
       director.update(dt, { playerPos: player.pos, camera, scene });
       audio.tickHeartbeat(dt);
+
+      updateGuidance();
 
       const anchor = nearestAnchor();
       if (anchor !== nearest) {
@@ -3195,7 +3917,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   /* -------------------------------------------------------------- wiring */
   ui = MI.ui.create({
     handlers: {
-      onNew: () => newGame(),
+      onNew: () => openSurvivor(),
       onContinue: () => continueGame(),
       onSettings: () => ui.show('settings'),
       onCredits: () => ui.show('credits'),
@@ -3211,6 +3933,9 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       onSettingsChange: (next) => applySettings(next),
     },
   });
+
+  ui.survivor.onSubmit((raw) => submitSurvivor(raw));
+  ui.survivor.onBack(() => ui.show('menu'));
 
   root.addEventListener('visibilitychange', () => {
     if (root.document.hidden && state === 'playing') togglePause(true);
@@ -3233,6 +3958,11 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     interact() { interact(); },
     nearestAnchor() { return nearestAnchor(); },
     anchors() { return kit ? kit.anchors.slice() : []; },
+    get player() { return player; },
+    get camera() { return camera; },
+    get kit() { return kit; },
+    get guidance() { return rs ? MI.nav.step(rs) : null; },
+    submitSurvivor(name) { submitSurvivor(name); },
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 

@@ -90,16 +90,83 @@ check('boot removed the loading screen', d.getElementById('boot').style.display 
 check('game reached the menu', w.MI.game.state === 'menu', w.MI.game.state);
 check('menu screen is visible', d.getElementById('screen-menu').classList.contains('on'));
 
-// Start a game the same way a player does.
+// Start a game the same way a player does: title -> survivor creation -> play.
 d.getElementById('btn-new').click();
+await wait(300);
+check('New Game opens survivor creation', d.getElementById('screen-survivor').classList.contains('on'));
+check('no browser prompt is used', typeof w.prompt === 'undefined' || w.prompt === null || w.__promptStub !== true);
+
+// validation first
+w.MI.game.submitSurvivor('');
+await wait(80);
+check('empty name is refused', /Enter a name/.test(d.getElementById('survivor-error').textContent),
+  d.getElementById('survivor-error').textContent);
+w.MI.game.submitSurvivor('A');
+await wait(80);
+check('one-letter name is refused', /two letters/.test(d.getElementById('survivor-error').textContent));
+w.MI.game.submitSurvivor('Ada9');
+await wait(80);
+check('digits are refused', /No numbers or symbols/.test(d.getElementById('survivor-error').textContent));
+check('still on the survivor screen', w.MI.game.state === 'menu', w.MI.game.state);
+
+// a real submission starts the game
+d.getElementById('survivor-name').value = "Ada O'Neill";
+d.getElementById('form-survivor').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
 await wait(500);
 check('New Game starts playing', w.MI.game.state === 'playing', w.MI.game.state);
+check('the survivor name is carried in', w.MI.game.playerState.name === "Ada O'Neill", w.MI.game.playerState.name);
 check('HUD is visible', d.getElementById('hud').classList.contains('on'));
 check('starts at the Beach with 5 energy', w.MI.game.location === 'Beach' && w.MI.game.playerState.energy === 5,
   w.MI.game.location + ' / ' + w.MI.game.playerState.energy);
 check('location title in HUD', d.getElementById('hud-location').textContent === 'Beach', d.getElementById('hud-location').textContent);
 check('energy pips rendered', d.getElementById('hud-energy').children.length === 5, d.getElementById('hud-energy').children.length);
 check('inventory starts empty', /empty pockets/.test(d.getElementById('hud-inventory').textContent));
+
+/* ---------------------------- third-person presentation ---------------------------- */
+const cam = w.MI.game.camera;
+const me = w.MI.game.player.pos;
+const behind = Math.hypot(cam.position.x - me.x, cam.position.z - me.z);
+check('camera sits back from the player', behind > 4 && behind < 9, behind.toFixed(2) + ' m');
+check('camera is raised above the player', cam.position.y > 1.5, cam.position.y.toFixed(2) + ' m');
+const facingVec = { x: -Math.sin(w.MI.game.player.facing), z: -Math.cos(w.MI.game.player.facing) };
+const toCam = { x: cam.position.x - me.x, z: cam.position.z - me.z };
+const dot = (facingVec.x * toCam.x + facingVec.z * toCam.z) / (Math.hypot(toCam.x, toCam.z) || 1);
+check('camera is behind the player, not in front', dot < -0.5, dot.toFixed(2));
+
+const survivor = w.MI.game.player.character;
+check('a visible character exists in the scene', !!survivor && survivor.group.visible === true);
+check('character is parented to the scene', !!survivor.group.parent);
+check('character has arms and legs', !!(survivor.armL && survivor.armR && survivor.legL && survivor.legR));
+check('character carries a lamp', !!survivor.lampGroup);
+check('character starts idle', survivor.moving === false);
+
+// drive the controller directly to prove walking animates the body
+const startPhase = survivor.phase;
+for (let i = 0; i < 12; i += 1) w.MI.game.player.update(0.033, { forward: 1, right: 0 });
+check('walking advances the animation phase', survivor.phase > startPhase, survivor.phase.toFixed(2));
+check('walking swings the legs', Math.abs(survivor.legL.rotation.x) > 0.05,
+  survivor.legL.rotation.x.toFixed(3));
+check('walking swings the arms', Math.abs(survivor.armR.rotation.x) > 0.03,
+  survivor.armR.rotation.x.toFixed(3));
+check('the character actually moved', Math.hypot(me.x - 0, me.z - 12) > 0.2,
+  Math.hypot(me.x, me.z - 12).toFixed(2) + ' m');
+check('the camera followed', Math.hypot(cam.position.x - me.x, cam.position.z - me.z) < 9);
+
+// running is faster than walking
+const walkSpeed = w.MI.game.player.speed;
+for (let i = 0; i < 20; i += 1) w.MI.game.player.update(0.033, { forward: 1, right: 0, sprint: true });
+check('running exceeds walking speed', w.MI.game.player.speed > walkSpeed, w.MI.game.player.speed.toFixed(2));
+
+/* ---------------------------- roadmap and guidance ---------------------------- */
+check('minimap canvas exists', !!d.getElementById('minimap'));
+check('guidance points at the next step of the route', /Jungle/i.test(d.getElementById('guide-text').textContent),
+  d.getElementById('guide-text').textContent);
+check('guidance gives a distance and bearing', /m /.test(d.getElementById('guide-meta').textContent),
+  d.getElementById('guide-meta').textContent);
+check('arrow is rotated to point somewhere', /rotate\(/.test(d.getElementById('guide-arrow').style.transform || ''),
+  d.getElementById('guide-arrow').style.transform);
+check('objective line names the goal', /rope/i.test(d.getElementById('hud-objective').textContent),
+  d.getElementById('hud-objective').textContent);
 
 // Interaction: walk to the campfire and use it.
 const anchors = w.MI.game.anchors();
@@ -168,6 +235,7 @@ async function walkTo(id) {
   await wait(650);
 }
 
+check('still in the Jungle before the cave', w.MI.game.location === 'Jungle', w.MI.game.location);
 await walkTo('exit-north');      // Jungle -> Cave
 check('cave reached', w.MI.game.location === 'Cave', w.MI.game.location);
 await walkTo('item-lantern');
@@ -188,6 +256,10 @@ check('save cleared after the run ends', w.MI.save.loadGame() === null);
 
 // A losing run: swim the channel with too little energy.
 d.getElementById('btn-again').click();
+await wait(300);
+check('play again returns to survivor creation', d.getElementById('screen-survivor').classList.contains('on'));
+d.getElementById('survivor-name').value = 'Ada';
+d.getElementById('form-survivor').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
 await wait(600);
 check('play again restarts clean', w.MI.game.state === 'playing' && w.MI.game.playerState.energy === 5 &&
   w.MI.game.playerState.inventory.length === 0, w.MI.game.state);

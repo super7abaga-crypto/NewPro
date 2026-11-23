@@ -10,6 +10,9 @@ export function makeThree() {
     add(v) { this.x += v.x; this.y += v.y; this.z += v.z; return this; },
     sub(v) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; },
     multiplyScalar(s) { this.x *= s; this.y *= s; this.z *= s; return this; },
+    addScaledVector(v, s) { this.x += v.x * s; this.y += v.y * s; this.z += v.z * s; return this; },
+    sub(v) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; },
+    setFromMatrixPosition() { return this; },
     normalize() {
       const l = Math.hypot(this.x, this.y, this.z) || 1;
       this.x /= l; this.y /= l; this.z /= l; return this;
@@ -41,7 +44,7 @@ export function makeThree() {
       groundColor: color(),
       target: null,
       shadow: { mapSize: { width: 0, height: 0 }, camera: { far: 0 }, bias: 0 },
-      add(...kids) { this.children.push(...kids); return this; },
+      add(...c) { c.forEach((child) => { if (child) child.parent = this; }); this.children.push(...c); return this; },
       remove() {},
       traverse(fn) { fn(this); this.children.forEach((c) => c && c.traverse && c.traverse(fn)); },
       lookAt() {},

@@ -275,6 +275,7 @@
     const before = rs.location;
     const msg = rules.applyAction(rs, anchor.action);
 
+    if (player && /^(take|pick up)/.test(String(anchor.action || ''))) player.celebrate();
     if (ui) ui.hud.say(msg, 4600);
     syncHud();
 
@@ -366,20 +367,28 @@
     if (controls) controls.release();
   }
 
-  function newGame() {
-    startGame(promptName());
+  /* The name is collected on the in-game survivor screen, not a browser prompt. */
+  const NAME_PATTERN = /^[A-Za-z][A-Za-z' -]{1,19}$/;
+
+  function openSurvivor() {
+    if (audio) { audio.init(); audio.resume(); }
+    ui.survivor.open('');
   }
 
-  function promptName() {
-    // Keep it frictionless: the CLI asks for a name, so do the same, but a
-    // blank answer is fine and falls back to "Player".
-    let name = '';
-    try {
-      name = root.prompt('What is your name, survivor?', '') || '';
-    } catch (err) {
-      name = '';
+  function submitSurvivor(raw) {
+    const name = String(raw || '').trim().replace(/\s+/g, ' ');
+    if (!name) { ui.survivor.error('Enter a name so the story can address you.'); return; }
+    if (name.length < 2) { ui.survivor.error('A name needs at least two letters.'); return; }
+    if (!NAME_PATTERN.test(name)) {
+      ui.survivor.error("Use letters, spaces, hyphens or apostrophes. No numbers or symbols.");
+      return;
     }
-    return name;
+    ui.survivor.close();
+    startGame(name);
+  }
+
+  function newGame() {
+    openSurvivor();
   }
 
   function continueGame() {
@@ -418,8 +427,55 @@
   }
 
   /* ---------------------------------------------------------------- loop */
+  let frameCount = 0;
+  let minimapCtx = null;
+
+  function grabMinimap() {
+    if (minimapCtx) return;
+    try {
+      const canvas = root.document.getElementById('minimap');
+      if (canvas && canvas.getContext) minimapCtx = canvas.getContext('2d');
+    } catch (err) {
+      minimapCtx = null;
+    }
+  }
+
+  /* Points at the next thing worth walking to, and keeps the roadmap honest. */
+  function updateGuidance() {
+    if (!rs || !ui || !MI.nav || !player) return;
+    const guidance = MI.nav.step(rs);
+    const list = (kit && kit.anchors) || [];
+    const anchor = list.filter((a) => a.id === guidance.anchor)[0] || null;
+
+    let angle = 0;
+    let meta = guidance.sameRoom ? 'right here' : 'towards the ' + guidance.room;
+    if (anchor) {
+      const world = MI.nav.bearing(player.pos, anchor);
+      angle = world + (player.viewYaw || player.cameraYaw || 0);
+      const metres = Math.max(1, Math.round(MI.nav.distance(player.pos, anchor)));
+      meta = metres + ' m ' + MI.nav.compass(world);
+    }
+    ui.hud.guidance({ angle, text: guidance.label, meta });
+    ui.hud.objective(guidance.goal ? guidance.goal.label : guidance.label);
+
+    if (frameCount % 6 === 0) {
+      grabMinimap();
+      if (minimapCtx) {
+        MI.nav.drawMinimap(minimapCtx, {
+          size: 132,
+          dpr: root.devicePixelRatio || 1,
+          state: rs,
+          player: player.pos,
+          step: guidance,
+          anchor,
+        });
+      }
+    }
+  }
+
   function frame(now) {
     root.requestAnimationFrame(frame);
+    frameCount += 1;
     const t = now / 1000;
     let dt = last ? t - last : 0.016;
     last = t;
@@ -431,6 +487,8 @@
       kit.update(dt, t);
       director.update(dt, { playerPos: player.pos, camera, scene });
       audio.tickHeartbeat(dt);
+
+      updateGuidance();
 
       const anchor = nearestAnchor();
       if (anchor !== nearest) {
@@ -570,7 +628,7 @@
   /* -------------------------------------------------------------- wiring */
   ui = MI.ui.create({
     handlers: {
-      onNew: () => newGame(),
+      onNew: () => openSurvivor(),
       onContinue: () => continueGame(),
       onSettings: () => ui.show('settings'),
       onCredits: () => ui.show('credits'),
@@ -586,6 +644,9 @@
       onSettingsChange: (next) => applySettings(next),
     },
   });
+
+  ui.survivor.onSubmit((raw) => submitSurvivor(raw));
+  ui.survivor.onBack(() => ui.show('menu'));
 
   root.addEventListener('visibilitychange', () => {
     if (root.document.hidden && state === 'playing') togglePause(true);
@@ -608,5 +669,10 @@
     interact() { interact(); },
     nearestAnchor() { return nearestAnchor(); },
     anchors() { return kit ? kit.anchors.slice() : []; },
+    get player() { return player; },
+    get camera() { return camera; },
+    get kit() { return kit; },
+    get guidance() { return rs ? MI.nav.step(rs) : null; },
+    submitSurvivor(name) { submitSurvivor(name); },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

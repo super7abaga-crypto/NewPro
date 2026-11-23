@@ -1,153 +1,134 @@
 # Verification Record — Mystery Island 3D
 
-This file states exactly what has been observed, how, and what has not been
-observed. It exists because the acceptance criteria require evidence rather than
-assurances, and because a passing unit test is not the same thing as a game that
-looks right on a phone.
-
-**Last updated:** 2026-11-23
-**Build:** `dist/index.html`, 749 KB, sha256 recorded in `MANIFEST.txt`
-
----
+What has actually been observed, how, and what has not been observed at all.
+Written 23 November 2026, after the third-person redesign.
 
 ## 1. What could not be done, and why
 
-| Required | Status | Reason |
-|---|---|---|
-| Launch in a real browser | **NOT DONE** | No browser automation available: integration credits exhausted (99.83/100 used) |
-| Desktop screenshots | **NOT DONE** | Same |
-| Mobile screenshots | **NOT DONE** | Same, and no physical device access |
-| Gameplay recording | **NOT DONE** | Same |
-| Upload / deploy a playable URL | **NOT DONE** | File upload returns `CREDIT_LIMIT_REACHED` |
-| Push to GitHub | **NOT DONE** | No repository token available |
+**No browser has run this game. No phone has run this game. There are no
+screenshots and no recording.**
 
-No screenshots are included in this delivery. None were generated, synthesised or
-described as if they existed.
+Integration credits on this account are exhausted (99.83 of 100 used), which
+blocks the browser automation tools, public and private file upload, and
+therefore any hosted URL. Every visual claim below is absent on purpose. Nothing
+in this document is a screenshot description.
 
-Everything below was actually executed in this environment.
-
----
+This means the following are **unverified**: how the game looks, whether the
+lighting reads on a real screen, whether touch controls feel usable, whether iOS
+unlocks audio, whether a mid-range Android phone holds a playable frame rate, and
+whether the jump scares land at the right moment.
 
 ## 2. What was verified, and how
 
-### 2.1 Automated suites — 211 checks, all passing
+### 2.1 Automated suites — 314 checks, all passing
 
-| Suite | Checks | Command | Covers |
-|---|---|---|---|
-| rules | 38 | `node tests/rules.test.mjs` | Every rule, plus 9 sequences replayed through the real `game.py` and compared message-for-message |
-| world | 82 | `node tests/world.test.mjs` | Reachability of every interactable, exits present both ways, items only where the rules place them, spawn safety, fog and light |
-| save | 41 | `node tests/save.test.mjs` | Round trip, 9 corrupt-save shapes, blocked storage, refusing storage, settings clamping |
-| offline | 14 | `node tests/offline.test.mjs` | Bundle makes zero external requests, nothing un-inlined, dependency pinned and checksummed |
-| dom | 36 | `node tests/dom.test.mjs` | Boots the real game in jsdom and plays a full win and a full loss |
-| original CLI | 31 | `python3 -m unittest discover -s tests` in `../easy-mystery-island` | The untouched original still passes |
+Run on 23 November 2026, Node 24 and Python 3.11.
 
-Last run: `rules 38/0`, `world 82/0`, `save 41/0`, `offline 14/0`, `dom 36/0`,
-`python CLI 31 OK`.
+| Suite | Result | Covers |
+| --- | --- | --- |
+| `rules.test.mjs` | 38 pass, 0 fail | Game rules, plus nine command sequences replayed through the real `game.py` and compared message by message |
+| `world.test.mjs` | 82 pass, 0 fail | All five rooms build; every interactable is reachable under the movement clamp; every rules exit exists in the world and vice versa; items appear only where the rules put them |
+| `save.test.mjs` | 41 pass, 0 fail | Save round trip, corrupt slot discarded, blocked storage, refused writes, version mismatch |
+| `offline.test.mjs` | 14 pass, 0 fail | The built bundle makes zero external requests and no local script is left un-inlined |
+| `nav.test.mjs` | 44 pass, 0 fail | Objective selection per game state, route finding, bearing and compass maths, minimap projection, and that guidance never names a horror event |
+| `character.test.mjs` | 31 pass, 0 fail | Rig structure, idle stillness, walk and run gaits, opposite arm and leg swing, easing turns, pickup animation, flinch, lamp toggle |
+| `dom.test.mjs` | 64 pass, 0 fail | Boots the real game headlessly and plays a full winning run and a full losing run |
 
-### 2.2 What the DOM integration test actually proves
+The original Python CLI suite still passes: 31 tests, unchanged.
 
-It loads `index.html` with the real `rules.js`, `world.js`, `player.js`,
-`controls.js`, `horror.js`, `ui.js` and `main.js`, replacing only Three.js (with a
-structural mock) and Web Audio (with a silent mock). It then:
+### 2.2 What the headless integration test actually proves
 
-1. Boots, removes the loading screen, reaches the menu.
-2. Clicks **New Game**, asserts the HUD appears at the Beach with 5 energy.
-3. Walks to the campfire anchor, asserts the prompt reads "Rest by the campfire",
-   presses use, asserts `rested` in the real rules state.
-4. Walks to the north gate, presses use, asserts the location becomes Jungle and
-   energy becomes 4 — proving the move cost is charged through the real rules.
-5. Walks to the rope, presses use, asserts inventory becomes `["rope"]` and the
-   HUD chip and objective text update.
-6. Pauses and resumes.
-7. Runs the in-browser self-test: 12/12 checks pass, all five locations build.
-8. Asserts the save slot was written with the right location and inventory.
-9. Continues to the Cave, takes the lantern, crosses to the Bridge, crosses to the
-   Lighthouse, lights the beacon, asserts `won === true` and the win screen reads
-   "You escaped".
-10. Asserts the save is cleared after the run ends.
-11. Plays again, walks to the bridge and swims, asserts the loss screen and that
-    the ending names drowning rather than energy.
+`dom.test.mjs` loads the real `index.html`, the real modules and the real state
+machine. Three.js is replaced by a structural mock that records the scene graph
+instead of rendering, and Web Audio by a silent mock. So it proves wiring and
+state, not pixels. Specifically it confirms:
 
-This is real end-to-end evidence of the state machine, the rules, the world
-anchors and the UI wiring. It is **not** evidence that the game renders correctly.
+- the game boots to the menu and reaches play through the survivor screen;
+- the survivor exists in the scene, parented, with separate limb groups;
+- the camera sits 4 to 9 m behind the player and above it;
+- the character physically moves when movement input is applied;
+- legs and arms swing while walking and the run gait exceeds the walk;
+- the HUD shows room, energy, inventory, objective and guidance;
+- walking to an anchor and using it changes real game state;
+- the rope and lantern are collected, and the inventory chips update;
+- the bridge refuses passage without the rope and allows it with;
+- the beacon wins the game and the win screen names the survivor;
+- drowning ends the game with the correct ending text;
+- save survives to `localStorage` and is cleared when a run ends;
+- pause and resume work;
+- play again returns to survivor creation.
 
-### 2.3 Defect found and fixed during this work
+### 2.3 What the redesign changed
 
-`tests/world.test.mjs` asserts that every interactable can be reached from inside
-the walkable area. It failed on the Old Bridge: the west gate sat at x = -14 while
-the walkable deck clamps to |x| ≤ 7.4, so the Cave was unreachable on the return
-trip. The gate moved to x = -6.6 and the invariant test now guards it.
+- First-person camera replaced by a third-person follow camera: 5.6 m behind,
+  2.5 to 3.9 m up depending on pitch, exponential easing, auto-recentring behind
+  the survivor, orbit by mouse drag or touch drag.
+- New `character.js`: a visible survivor built from primitives with a gait driven
+  by distance travelled. Walk 2.7 m/s, run 5.2 m/s. Pickup and flinch animations.
+- New `nav.js`: roadmap graph over the five rooms, objective selection from the
+  rules state, route finding, bearings, minimap drawing.
+- New HUD: minimap with room nodes, player position and a dashed remaining
+  route; a rotating guidance arrow with distance and compass direction; an
+  objective line naming the ultimate goal.
+- Survivor creation screen replaces `window.prompt`, with validation and an
+  inline error.
+- Visibility: moonlight added per room, ambient lifted, fog thinned by roughly
+  40%, and a trail of emissive stones laid from each room centre to every exit.
+- The lamp now hangs on the character and lights from the character rather than
+  from an invisible camera.
 
-### 2.4 Changes made in this round (production readiness)
+### 2.4 Defects found and fixed during this work
 
-- Three.js **vendored** at `vendor/three.min.js`; the bundle now makes no network
-  requests at all. The build fails if anything external or relative slips in.
-- WebGL capability probe with a readable error instead of a black screen.
-- Adaptive resolution: below 45 fps the renderer sheds pixels, never above the
-  quality ceiling.
-- Per-frame allocation removed from the movement path (reused vector).
-- Save schema versioned (`SAVE_VERSION = 2`), validated field by field, corrupt
-  slots discarded, settings clamped.
-- Camera shake, torch flicker below 3 energy, and set dressing added to all five
-  locations (driftwood, dead trees, bones, crates, chain, barrels).
-
----
+1. **Bridge west gate unreachable.** The gate sat at x = -14 while the walkable
+   deck clamps to |x| ≤ 7.4, so the Cave could not be re-entered from the bridge.
+   Fixed, and `world.test.mjs` now asserts reachability for every anchor in every
+   room.
+2. **Real Three.js overwrote the test mock.** Once the vendor file was added, the
+   jsdom harness loaded the real library and threw on WebGL. The harness now
+   inlines the dev sources and removes the vendor tag.
+3. **Two character tests compared angles naively.** A yaw of −π and +π are the
+   same direction; the assertions now compare modulo a full turn. This was a
+   test defect, not a gameplay defect, and the tests were corrected rather than
+   removed.
+4. **`action` referenced out of scope** in the interaction handler after the
+   pickup-animation line was added. Fixed to use the anchor's action.
 
 ## 3. Acceptance criteria — honest status
 
-| Criterion | Status | Basis |
-|---|---|---|
-| Original CLI remains functional | **VERIFIED** | 31 Python tests pass, scripted run wins, files untouched |
-| New game launches | **PARTIAL** | Boots in jsdom; not launched in a browser |
-| Desktop movement and interactions | **PARTIAL** | Logic verified headlessly; input devices not exercised |
-| Mobile movement and interactions | **NOT VERIFIED** | No device or browser access |
-| All five locations playable | **PARTIAL** | All five build and are traversable in the integration run; not seen rendered |
-| Flashlight works | **PARTIAL** | Created and toggled in code; not seen |
-| Inventory and item collection | **VERIFIED (logic)** | Asserted through the real state in the integration test |
-| Rope and lantern requirements enforced | **VERIFIED** | Rules tests and integration run |
-| Energy and survival mechanics | **VERIFIED** | Rules tests, integration run |
-| Horror effects and audio | **NOT VERIFIED** | Code paths execute under a silent mock; nothing heard |
-| Threat encounters have consequences | **VERIFIED (logic)** | Watcher drains 1 energy and forces a return to the Beach |
-| Player can win and lose | **VERIFIED (logic)** | Both completed in the integration run |
-| Save and continue | **VERIFIED (logic)** | 41 save checks plus integration assertions |
-| Settings and audio controls | **PARTIAL** | Wiring and clamping tested; not heard |
-| No major broken assets or console errors | **NOT VERIFIED** | No console available; bundle is self-contained with no asset loads |
-| Existing automated tests pass | **VERIFIED** | 31/31 |
-| Documentation reflects implementation | **VERIFIED** | README rewritten against the code |
-
----
+| # | Criterion | Status |
+| --- | --- | --- |
+| 1 | Player visibly rendered throughout gameplay | Structure verified (character in scene, parented, limbs). **Not seen.** |
+| 2 | Walking and running animations | Verified structurally: limb rotation changes with speed, run exceeds walk. **Not seen.** |
+| 3 | Turning and directional movement | Verified: facing eases toward movement direction. **Not seen.** |
+| 4 | Camera follows smoothly | Verified: camera positioned behind and above, eased. **Not seen.** |
+| 5 | All five environments navigable | Verified by tests. **Not seen.** |
+| 6 | Collisions and boundaries | Verified by invariant tests. **Not felt.** |
+| 7 | Rope and Lantern collection, visually and mechanically | Mechanically verified; animation triggered. **Visuals not seen.** |
+| 8 | Bridge enforces the rope | Verified. |
+| 9 | Lighthouse enforces the lantern | Verified. |
+| 10 | Roadmap shows location and next objective | Verified by tests. **Not seen.** |
+| 11 | Environment sufficiently visible | Brightened and pathway-lit in code. **This is the criterion most in need of eyes.** |
+| 12 | Desktop and mobile controls implemented | Both implemented; keyboard path exercised in tests. **Touch never used.** |
+| 13 | Save and continue | Verified. |
+| 14 | Original win and loss conditions intact | Verified, including parity against `game.py`. |
+| 15 | Existing tests pass, new tests added | 314 pass, including 75 new checks for nav and character. |
 
 ## 4. Outstanding defects and risks
 
-1. **Lighting is untuned by eye.** Intensities were chosen analytically for
-   physically-correct lights. Risk: rooms too dark or too bright. Mitigation:
-   Settings → Brightness, plus `?debug=1`.
-2. **Touch ergonomics unproven.** The joystick is zone-based (left half moves,
-   right half looks). Comfort and reach are untested on a real handset.
-3. **Audio autoplay policy.** Audio starts on the first menu click, which
-   satisfies iOS and Chrome, but has not been confirmed on a device.
-4. **Performance on low-end Android** is unknown. Adaptive resolution should
-   absorb it; unmeasured.
-5. **Jump-scare timing** is scripted by clock, not by pacing analysis. They may
-   land early or feel mechanical.
-6. **Original CLI endings.** Drowning and "call for help" still print *you ran out
-   of energy*. Patch available, not applied (the CLI is deliberately frozen).
-
----
+- Lighting is tuned by reasoning, not by looking. It may be too dark or too flat.
+- Touch ergonomics are unproven: stick size, look sensitivity and button
+  placement have never been used by a hand.
+- iOS audio unlock is unverified; the first gesture should start audio, but that
+  is untested on Safari.
+- Frame rate on low-end Android is unknown; adaptive resolution drops pixels
+  below 45 fps but has never had to.
+- The watcher's approach speed and the jump-scare timings are untuned.
+- The character is built from primitives. It reads as a person in silhouette, but
+  it has no textures and no skeletal animation.
 
 ## 5. Deployment readiness
 
-**Locally: ready.** Single self-contained file, no dependencies, no network.
-`dist/index.html` will run from disk or any static host.
-
-**Publicly: blocked.** Upload and deployment both fail with
-`CREDIT_LIMIT_REACHED`. When credits return, the plan is:
-
-1. Upload `dist/index.html`, serve it as `text/html` through a backend function
-   (the same pattern already used for the attendance portal).
-2. Open it on desktop and phone, capture real screenshots and a recording.
-3. Fix whatever the screenshots reveal — lighting and touch first.
-4. Push `mystery-island-3d/` to `NewPro` once a token is available.
-
-**Not production-ready.** It is a complete, tested prototype that has never been
-seen running.
+The build is packaged, offline-capable and reproducible: `node build.mjs`
+regenerates `dist/index.html` byte for byte from source. It is ready to be
+inspected. It is **not** ready to be called finished, because nobody has played
+it.
