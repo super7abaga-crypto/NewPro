@@ -4,10 +4,16 @@ Version: 0.9.0-prototype   Three.js: 0.157.0 (vendored)
 sha256                                                            bytes  path
 
 2f9aebd7a15d0a9e62d69bff1c888bb93ec5eab506a9db272de622defda4735c      30  .gitignore
+0c681996d578916412ac04f5e289b0a4cdd02df6c277cbb6d0374c7816c0f3f6    2885  ASSETS.md
 b32d6876830edf3706bfe5e2f194c668c94899694129ada54c694044b15d68c7    7425  README.md
 3e80ae160b1fb5a91f69388655d4038e3a6f77c55658ef8ece53fc37724124aa   10025  VERIFICATION.md
 e72ae9c25f1115faaa3a020f66facf36a8b487099c0c2bc3202669b3c88cc530    1719  build.mjs
 7ccf27c528022cc3ff1d5a943129faf407d0a7c56812fc610536518dedae3818  798170  dist/index.html
+bc04ad237c84f38fd194f5575b94efcb3a22e2d54cf7d82fbb707149a97715f2  726236  docs/previews/preview_beach.png
+4cd0e62f778c8f89e63aac3e6d03cbf5d238577ba46b598cdc61c17122340036  693296  docs/previews/preview_face.png
+7973a4f9b660fe06e1527a1caa8fb775af407a1946f2c06dd4922d65569cc218  658458  docs/previews/preview_front.png
+db85516af02393d8bffe97e0c1fbb3cdc56186f6762ecd5183f1c435834821e4  653759  docs/previews/preview_rear.png
+10ce639d7efd971498244756db8708e2bbaab34108b2204647c912300eb0a75a  634243  docs/previews/preview_side.png
 a54a8e23f6d28254e56a0bbd29a28d8d9b4890a2f2c7230546bccebe3346dd9d   17644  index.html
 255c4c15c491d72eae714309584f9f3000b5cb22a36a24bba574549683e425d6    2052  make_delivery.py
 067d4501c3f3b718310aef7d3eccc4387290dec3d3a1c34d359ad07ae162ab61    1279  package.json
@@ -24,6 +30,7 @@ c9334337e1303e0dd28417b8acc9cce558593ba8c23fce2c3c572a97c34c9348   10291  src/ui
 1a28d739c3052e97dfefd630e72df605d9462d08236b5ff8fc672f346fd979b3   33497  src/world.js
 9808e8550df9e3c584affd42d2cccaffe3228da23c3170efef70c84bd13e8b62    7183  tests/character.test.mjs
 f2d1293adabfcf6ba1f67fb3dc07dca1480526ec60c30b86c269fb6b16b2c902   14453  tests/dom.test.mjs
+f0c61416d5499c418308e16fb3559e82816f09c6114c67f8077781f874eea055    5182  tests/journey.test.mjs
 da5c9a984715770ec2f5f07e38ce625524967ba921a84a5d3079d0c4ffb5a56c    7382  tests/nav.test.mjs
 547ebde5223b72b759043ae40ecd5ee7d21cb41d8b6a42d88406f4405ab76401    3243  tests/offline.test.mjs
 13de942affe5858fe8b878e360e0b7c20d95d41c1b3a7bbe58388d814448f10c   12655  tests/rules.test.mjs
@@ -35,5 +42,5 @@ fb1f5fae343e23cf3d1d7dff5f1758b72b71ccf9164ecdbf82c4735b6047909a    5611  tests/
 445798e31f78915517816443e59440b3ab575633c40c278e30b3ac9ea55fa0c0  648280  vendor/three.min.js
 c529658fb52bdce906ecd74483103d9ba4e96c768ead6a40e54b15abace8bb12    2071  verify_delivery.py
 
-31 payload files. This manifest is included in the archive as
+38 payload files. This manifest is included in the archive as
 mystery-island-3d/MANIFEST.txt. Run `python3 verify_delivery.py` to re-check.
