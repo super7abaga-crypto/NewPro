@@ -12,18 +12,21 @@
   "scripts": {
     "build": "node build.mjs",
     "serve": "python3 -m http.server 8000",
-    "test": "node tests/rules.test.mjs && node tests/world.test.mjs && node tests/save.test.mjs && node tests/offline.test.mjs && node tests/nav.test.mjs && node tests/character.test.mjs && node tests/survivor.test.mjs && node tests/spawn.test.mjs && node tests/dom.test.mjs",
+    "test": "node tests/rules.test.mjs && node tests/world.test.mjs && node tests/save.test.mjs && node tests/offline.test.mjs && node tests/nav.test.mjs && node tests/character.test.mjs && node tests/survivor.test.mjs && node tests/spawn.test.mjs && node tests/journey.test.mjs && node tests/gltf.test.mjs && node tests/dom.test.mjs",
     "test:rules": "node tests/rules.test.mjs",
     "test:world": "node tests/world.test.mjs",
     "test:save": "node tests/save.test.mjs",
     "test:offline": "node tests/offline.test.mjs",
     "test:spawn": "node tests/spawn.test.mjs",
     "test:dom": "node tests/dom.test.mjs",
-    "test:python-cli": "cd ../easy-mystery-island && python3 -m unittest discover -s tests"
+    "test:python-cli": "cd ../easy-mystery-island && python3 -m unittest discover -s tests",
+    "test:gltf": "node tests/gltf.test.mjs",
+    "test:journey": "node tests/journey.test.mjs"
   },
   "engines": {
     "node": ">=18"
   },
-  "threeSource": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js",
-  "threeSha256": "445798e31f78915517816443e59440b3ab575633c40c278e30b3ac9ea55fa0c0"
+  "threeSource": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+  "threeSha256": "d8b3fcec718d714da9095e42318529d829151328121d0d11ae159b3611b6d55d",
+  "threeBundle": "vendor/three.js (three.module.js + GLTFLoader + BufferGeometryUtils, esbuild IIFE)"
 }

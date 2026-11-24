@@ -128,7 +128,7 @@ from `../easy-mystery-island/` (31 tests).
 
 ## Dependencies
 
-- Three.js **0.157.0**, vendored at `vendor/three.min.js`, inlined into `dist/`.
+- Three.js **0.157.0** plus `GLTFLoader`, bundled to `vendor/three.js` (ESM sources, esbuild IIFE, no external imports) and inlined into `dist/`.
   Nothing is fetched at runtime.
 - `jsdom` (dev only) for the headless integration test. The game itself has no
   runtime dependencies.

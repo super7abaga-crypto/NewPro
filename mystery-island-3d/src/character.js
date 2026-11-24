@@ -117,6 +117,71 @@
     };
 
     /* ------------------------------------------------------------- update */
+    /* ------------------------------------------------- gltf survivor */
+    let model = null;
+    const bones = {};
+    const restQ = new Map();
+    let _tmpE = new THREE.Euler(), _tmpQ = new THREE.Quaternion();
+
+    // Load the MakeHuman survivor in the background. The primitive rig stays
+    // visible until it arrives, so a failed or slow load never breaks play.
+    try {
+      if (root.__SURVIVOR_GLB && root.GLTFLoader) {
+        loadModel(THREE, root.__SURVIVOR_GLB).then(attachModel).catch(() => {});
+      }
+    } catch (err) { /* the fallback rig is already in place */ }
+
+    function loadModel(three, source) {
+      return new Promise((resolve, reject) => {
+        const Loader = root.GLTFLoader;
+        if (!Loader || !source) { reject(new Error('no GLTFLoader or model source')); return; }
+        new Loader().load(source, (gltf) => resolve(gltf.scene), undefined, reject);
+      });
+    }
+
+    function attachModel(scene) {
+      if (!scene) return false;
+      model = scene;
+      model.traverse((o) => {
+        if (o.isBone) { bones[o.name] = o; restQ.set(o, o.quaternion.clone()); }
+        if (o.isMesh) { o.frustumCulled = false; o.castShadow = true; }
+      });
+      // Blender's -Y forward becomes -Z after the glTF Y-up conversion; the rig
+      // here faces +Z, so turn the model half a circle to match.
+      model.rotation.y = Math.PI;
+      model.position.y = 0;
+      group.add(model);
+      [body, armL, armR, legL, legR].forEach((part) => { if (part) part.visible = false; });
+      return true;
+    }
+
+    function boneSet(name, angle) {
+      const b = bones[name];
+      if (!b) return;
+      const rest = restQ.get(b);
+      _tmpE.set(angle, 0, 0);
+      _tmpQ.setFromEuler(_tmpE);
+      b.quaternion.copy(rest).multiply(_tmpQ);
+    }
+
+    function driveSkeleton(swing, gait, running) {
+      if (!_tmpQ) return;
+      boneSet('upperleg01.L', swing * 0.85);
+      boneSet('upperleg01.R', -swing * 0.85);
+      boneSet('lowerleg01.L', Math.max(0, -swing) * 0.9);
+      boneSet('lowerleg01.R', Math.max(0, swing) * 0.9);
+      boneSet('upperarm01.L', -swing * 0.7);
+      boneSet('upperarm01.R', swing * 0.7);
+      boneSet('lowerarm01.L', 0.25 + Math.max(0, swing) * 0.5);
+      boneSet('lowerarm01.R', 0.25 + Math.max(0, -swing) * 0.5);
+      boneSet('spine01', (running ? 0.18 : 0.06) * gait);
+      boneSet('head', -0.5 * (running ? 0.18 : 0.06) * gait);
+      if (state.pickup > 0) {
+        const t = 1 - state.pickup / 0.55;
+        boneSet('upperarm01.R', -1.5 * Math.sin(Math.min(1, t) * Math.PI));
+      }
+    }
+
     function update(dt, input) {
       const speed = input && typeof input.speed === 'number' ? input.speed : 0;
       const running = !!(input && input.running);
@@ -133,6 +198,9 @@
 
       const gait = Math.min(1, speed / 2.4);
       const swing = Math.sin(state.phase) * (running ? 0.95 : 0.62) * gait;
+
+      if (state.pickup > 0) state.pickup = Math.max(0, state.pickup - dt);
+      if (model) { driveSkeleton(swing, gait, running); return; }
 
       if (state.pickup > 0) {
         state.pickup = Math.max(0, state.pickup - dt);
@@ -191,7 +259,8 @@
     group.rotation.y = state.facing;
 
     return {
-      group, body, armL, armR, legL, legR, lampGroup,
+      group, body, armL, armR, legL, legR, lampGroup, attachModel, loadModel,
+      get hasModel() { return !!model; },
       update, setFacing, setPosition, playPickup, flinch, setLamp, setVisible,
       get facing() { return state.facing; },
       get moving() { return state.moving; },

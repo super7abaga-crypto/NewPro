@@ -23,6 +23,16 @@ out = out.replace(pattern, (_match, path) => {
   return '<script>\n/* ==== ' + path + ' ==== */\n' + code + '\n</script>';
 });
 
+// Embed the character model so the single file stays self-contained.
+try {
+  const glb = readFileSync(join(here, 'assets/survivor.glb'));
+  const b64 = glb.toString('base64');
+  out = out.replace('</head>', '<script>window.__SURVIVOR_GLB="data:model/gltf-binary;base64,' + b64 + '";</script>\n</head>');
+  console.log('character embedded: ' + (glb.length / 1048576).toFixed(2) + ' MB');
+} catch (err) {
+  console.log('no character model to embed (fallback rig will be used)');
+}
+
 mkdirSync(join(here, 'dist'), { recursive: true });
 writeFileSync(join(here, 'dist', 'index.html'), out, 'utf8');
 

@@ -42,7 +42,9 @@ if (dist) {
   check('no relative file references', localRefs.length === 0, localRefs.join(', '));
 
   const kb = statSync(join(root, 'dist', 'index.html')).size / 1024;
-  check('bundle is a sane size (< 2 MB)', kb < 2048, kb.toFixed(0) + ' KB');
+  // Raised from 2 MB when the rigged survivor (6 MB GLB) was embedded; the
+  // cap still catches accidental growth, it just allows for the character.
+  check('bundle stays within the embedded-character budget (< 12 MB)', kb < 12288, kb.toFixed(0) + ' KB');
 }
 
 /* Dependency and version information must be recorded, not guessed at. */
@@ -51,7 +53,7 @@ check('package.json declares no runtime dependencies', Object.keys(pkg.dependenc
   JSON.stringify(pkg.dependencies || {}));
 check('Three.js version recorded in package.json', /^0\.\d+\.\d+$/.test(pkg.three || ''), pkg.three);
 
-const vendor = readFileSync(join(root, 'vendor', 'three.min.js'));
+const vendor = readFileSync(join(root, 'vendor', 'three.js'));
 const digest = createHash('sha256').update(vendor).digest('hex');
 check('vendored Three.js matches the recorded checksum', digest === pkg.threeSha256,
   digest.slice(0, 16) + '… vs ' + String(pkg.threeSha256).slice(0, 16) + '…');
