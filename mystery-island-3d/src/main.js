@@ -200,12 +200,9 @@
   }
 
   function entryPoint(location, fromDirection) {
-    const opposite = OPPOSITE[fromDirection] || null;
-    const anchor = opposite && kit.anchors.find((a) => a.action === 'go ' + opposite);
-    if (anchor) {
-      const len = Math.hypot(anchor.x, anchor.z) || 1;
-      return { x: anchor.x - (anchor.x / len) * 2.6, z: anchor.z - (anchor.z / len) * 2.6, yaw: Math.atan2(-anchor.x, -anchor.z) };
-    }
+    // One implementation, shared with the spawn-clearance tests.
+    const shared = MI.world.arrivalPoint(kit.anchors, fromDirection);
+    if (shared) return shared;
     return { x: 0, z: 10, yaw: Math.PI };
   }
 

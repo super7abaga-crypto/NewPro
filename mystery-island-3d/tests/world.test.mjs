@@ -87,10 +87,14 @@ W.locations.forEach((name) => {
   check(name + ': help anchor only at the lighthouse', has('call for help') === (name === 'Lighthouse'));
 
   // 6. Spawn safety: the point the player arrives at must not be inside a prop.
-  const spawn = { x: 0, z: 10 };
-  if (kit.clamp) kit.clamp(spawn);
-  const trapped = kit.colliders.some((c) => Math.hypot(spawn.x - c.x, spawn.z - c.z) < c.r + PLAYER_RADIUS);
-  check(name + ': spawn point is clear', !trapped);
+  const spawns = (MI.world.arrivalPoints ? MI.world.arrivalPoints(kit.anchors) : [])
+    .concat([MI.world.FALLBACK_SPAWN || { x: 0, z: 10 }]);
+  const trapped = spawns.some((raw) => {
+    const spawn = { x: raw.x, z: raw.z };
+    if (kit.clamp) kit.clamp(spawn);
+    return kit.colliders.some((c) => Math.hypot(spawn.x - c.x, spawn.z - c.z) < c.r + PLAYER_RADIUS);
+  });
+  check(name + ': every spawn point is clear', !trapped, spawns.length + ' spawn points');
 
   // 7. Fog and ambience present so the location reads as a distinct place.
   check(name + ': has fog', !!kit.fog && kit.fog.density > 0, kit.fog ? 'density ' + kit.fog.density : 'none');

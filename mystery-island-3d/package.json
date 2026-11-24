@@ -12,11 +12,12 @@
   "scripts": {
     "build": "node build.mjs",
     "serve": "python3 -m http.server 8000",
-    "test": "node tests/rules.test.mjs && node tests/world.test.mjs && node tests/save.test.mjs && node tests/offline.test.mjs && node tests/dom.test.mjs",
+    "test": "node tests/rules.test.mjs && node tests/world.test.mjs && node tests/save.test.mjs && node tests/offline.test.mjs && node tests/nav.test.mjs && node tests/character.test.mjs && node tests/survivor.test.mjs && node tests/spawn.test.mjs && node tests/dom.test.mjs",
     "test:rules": "node tests/rules.test.mjs",
     "test:world": "node tests/world.test.mjs",
     "test:save": "node tests/save.test.mjs",
     "test:offline": "node tests/offline.test.mjs",
+    "test:spawn": "node tests/spawn.test.mjs",
     "test:dom": "node tests/dom.test.mjs",
     "test:python-cli": "cd ../easy-mystery-island && python3 -m unittest discover -s tests"
   },

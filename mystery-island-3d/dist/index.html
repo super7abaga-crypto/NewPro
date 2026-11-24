@@ -1445,7 +1445,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       trunk.position.set(x, 2.4, z);
       trunk.rotation.z = rnd(-0.16, 0.16);
       group.add(trunk);
-      colliders.push({ x, z, r: 0.5 });
+      colliders.push({ x, z, r: 0.5, mesh: trunk });
     }
 
     // rain
@@ -1542,7 +1542,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       );
       canopy.position.set(x, h + 0.8, z);
       group.add(canopy);
-      if (r > 9) colliders.push({ x, z, r: 0.55 });
+      if (r > 9) colliders.push({ x, z, r: 0.55, mesh: trunk });
     }
 
     // hanging vines
@@ -1650,7 +1650,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       stal.position.set(Math.sin(a) * r, rnd(5, 9), Math.cos(a) * r);
       stal.rotation.x = Math.PI;
       group.add(stal);
-      if (i % 3 === 0 && r > 8) colliders.push({ x: Math.sin(a) * r, z: Math.cos(a) * r, r: 0.7 });
+      if (i % 3 === 0 && r > 8) colliders.push({ x: Math.sin(a) * r, z: Math.cos(a) * r, r: 0.7, mesh: stal });
     }
 
     for (let i = 0; i < 14; i += 1) {
@@ -1659,7 +1659,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(rnd(0.5, 1.4), 0), mat(THREE, 0x2a241c));
       rock.position.set(Math.sin(a) * r, 0.4, Math.cos(a) * r);
       group.add(rock);
-      colliders.push({ x: rock.position.x, z: rock.position.z, r: 1.1 });
+      colliders.push({ x: rock.position.x, z: rock.position.z, r: 1.1, mesh: rock });
     }
 
     // the lantern, on its rock
@@ -2089,6 +2089,75 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     });
   }
 
+  /* ------------------------------------------------------- arrival safety
+   * A room can be entered from each of its exits. The arrival point sits 2.6 m
+   * inside that exit, and scenery is scattered randomly in rings that overlap
+   * it, so a tree or a rock could land on top of the player. These helpers are
+   * the single source of truth for where the player appears, and they push any
+   * blocking collider (with its mesh) clear of every arrival point.
+   */
+  const OPPOSITE = { north: 'south', south: 'north', east: 'west', west: 'east' };
+  const ARRIVAL_INSET = 2.6;
+  const PLAYER_RADIUS = 0.42;
+  const SPAWN_MARGIN = 0.35;
+  const FALLBACK_SPAWN = { x: 0, z: 10 };
+
+  function arrivalPoints(anchors) {
+    const points = [];
+    (anchors || []).forEach((a) => {
+      if (!a || String(a.action || '').indexOf('go ') !== 0) return;
+      const len = Math.hypot(a.x, a.z) || 1;
+      points.push({
+        x: a.x - (a.x / len) * ARRIVAL_INSET,
+        z: a.z - (a.z / len) * ARRIVAL_INSET,
+        from: a.action.slice(3),
+      });
+    });
+    return points;
+  }
+
+  function arrivalPoint(anchors, fromDirection) {
+    const opposite = OPPOSITE[fromDirection] || null;
+    const anchor = opposite && (anchors || []).find((a) => a.action === 'go ' + opposite);
+    if (!anchor) return null;
+    const len = Math.hypot(anchor.x, anchor.z) || 1;
+    return {
+      x: anchor.x - (anchor.x / len) * ARRIVAL_INSET,
+      z: anchor.z - (anchor.z / len) * ARRIVAL_INSET,
+      yaw: Math.atan2(-anchor.x, -anchor.z),
+    };
+  }
+
+  function clearArrivals(colliders, anchors) {
+    // every exit approach, plus the fallback used when there is no exit to
+    // come from (this is where a new game begins)
+    const points = arrivalPoints(anchors).concat([FALLBACK_SPAWN]);
+    if (!points.length || !colliders) return 0;
+    let moved = 0;
+    for (let pass = 0; pass < 2; pass += 1) {
+      colliders.forEach((c) => {
+        points.forEach((p) => {
+          const dx = c.x - p.x;
+          const dz = c.z - p.z;
+          const d = Math.hypot(dx, dz);
+          const need = c.r + PLAYER_RADIUS + SPAWN_MARGIN;
+          if (d >= need) return;
+          const nx = d > 0.0001 ? dx / d : 1;
+          const nz = d > 0.0001 ? dz / d : 0;
+          const shift = need - d;
+          c.x += nx * shift;
+          c.z += nz * shift;
+          if (c.mesh && c.mesh.position) {
+            c.mesh.position.x += nx * shift;
+            c.mesh.position.z += nz * shift;
+          }
+          moved += 1;
+        });
+      });
+    }
+    return moved;
+  }
+
   const BUILDERS = {
     Beach: buildBeach,
     Jungle: buildJungle,
@@ -2106,10 +2175,18 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       kit.location = location;
       addMoonlight(THREE, kit.group);
       addPathways(THREE, kit.group, kit.anchors, location);
+      clearArrivals(kit.colliders, kit.anchors);
       return kit;
     },
     locations: Object.keys(BUILDERS),
     dress,
+    arrivalPoint,
+    arrivalPoints,
+    clearArrivals,
+    PLAYER_RADIUS,
+    SPAWN_MARGIN,
+    ARRIVAL_INSET,
+    FALLBACK_SPAWN,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -3519,12 +3596,9 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
 
   function entryPoint(location, fromDirection) {
-    const opposite = OPPOSITE[fromDirection] || null;
-    const anchor = opposite && kit.anchors.find((a) => a.action === 'go ' + opposite);
-    if (anchor) {
-      const len = Math.hypot(anchor.x, anchor.z) || 1;
-      return { x: anchor.x - (anchor.x / len) * 2.6, z: anchor.z - (anchor.z / len) * 2.6, yaw: Math.atan2(-anchor.x, -anchor.z) };
-    }
+    // One implementation, shared with the spawn-clearance tests.
+    const shared = MI.world.arrivalPoint(kit.anchors, fromDirection);
+    if (shared) return shared;
     return { x: 0, z: 10, yaw: Math.PI };
   }
 
