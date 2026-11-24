@@ -33,15 +33,21 @@ check('map positions stay inside the panel',
   rooms.every((r) => N.MAP[r].x > 0.05 && N.MAP[r].x < 0.95 && N.MAP[r].y > 0.05 && N.MAP[r].y < 0.95));
 
 /* --------------------------------------------------------------- the graph */
-eq(N.neighbours('Beach').length, 1, 'the beach has one way out');
-eq(N.neighbours('Beach')[0].to, 'Jungle', 'the beach leads to the jungle');
+eq(N.neighbours('Beach').length, 2, 'the beach has two ways out, as in the original');
+eq(N.neighbours('Beach').map((n) => n.dir).sort().join(','), 'north,west', 'north to the jungle, west along the shore');
+eq(N.neighbours('Beach').filter((n) => n.to === 'Old Bridge').length, 1, 'the shore path reaches the old bridge');
 eq(N.neighbours('Jungle').length, 2, 'the jungle is a junction');
 eq(N.neighbours('Lighthouse').length, 1, 'the lighthouse is the end of the line');
 
 const route = N.pathBetween('Beach', 'Lighthouse');
-eq(route.join('>'), 'Beach>Jungle>Cave>Old Bridge>Lighthouse', 'route to the lighthouse follows the story');
+eq(route.join('>'), 'Beach>Old Bridge>Lighthouse', 'the shore path is the shortest route to the lighthouse');
+/* The only gated edge is Bridge->Lighthouse, and by the time that is the goal
+ * the player is holding the rope, so this route is always walkable. */
+const noRope = R.newGame('Ada');
+noRope.inventory = ['lantern'];
+eq(N.goal(noRope).room, 'Jungle', 'without the rope the objective is still the jungle');
 eq(N.pathBetween('Cave', 'Cave').join('>'), 'Cave', 'a route to the room you are in is just that room');
-eq(N.pathBetween('Lighthouse', 'Beach').join('>'), 'Lighthouse>Old Bridge>Cave>Jungle>Beach', 'routes work backwards too');
+eq(N.pathBetween('Lighthouse', 'Beach').join('>'), 'Lighthouse>Old Bridge>Beach', 'routes work backwards too');
 
 /* ------------------------------------------------------------ the objective */
 const fresh = R.newGame('Ada');

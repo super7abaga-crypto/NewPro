@@ -352,10 +352,11 @@
     });
   }
 
-  function startGame(name, restored) {
+  function startGame(name, restored, character) {
     if (audio) { audio.init(); audio.resume(); }
-    rs = restored || rules.newGame(name);
+    rs = restored || rules.newGame(name, character);
     state = 'playing';
+    if (MI.character && MI.character.setLook) MI.character.setLook(rs.character || character || 'castaway');
     ui.hideScreens();
     ui.hud.on();
     loadLocation(rs.location, null);
@@ -395,7 +396,7 @@
     ui.survivor.close();
     if (ui.survivor.busy) ui.survivor.busy(true);
     try {
-      startGame(result.name);
+      startGame(result.name, null, ui.survivor.character);
     } catch (err) {
       if (ui.survivor.busy) ui.survivor.busy(false);
       ui.survivor.error('The island failed to load. ' + (err && err.message ? err.message : ''));
@@ -661,6 +662,7 @@
     },
   });
 
+  ui.survivor.onCharacter((key) => { if (MI.character && MI.character.setLook) MI.character.setLook(key); });
   ui.survivor.onSubmit((raw) => submitSurvivor(raw));
   ui.survivor.onBack(() => ui.show('menu'));
 

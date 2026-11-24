@@ -86,7 +86,8 @@ test('T3 a legal move changes location and costs exactly one energy', () => {
 });
 test('T4 a wrong direction is rejected without cost', () => {
   const p = R.newGame('Ada');
-  R.applyAction(p, 'go west');
+  // east is not an exit from the Beach; west now is, by CEO approval
+  R.applyAction(p, 'go east');
   eq(p.location, 'Beach', 'location');
   eq(p.energy, 5, 'energy');
 });
@@ -295,7 +296,10 @@ const sequences = [
   { name: 'Ada', actions: ['go north', 'go north', 'go east', 'go north'] },
   { name: 'Ada', actions: ['go north', 'go south', 'rest', 'rest', 'inventory'] },
   { name: 'Ada', actions: ['go north', 'go north', 'go east', 'swim'] },
-  { name: 'Ada', actions: ['dance', '', 'go west', 'take lantern', 'go north'] },
+  // 'east' is not an exit from the Beach in either build, so this still
+  // proves an invalid move is rejected. ('west' now IS valid here: the CEO
+  // approved the Beach <-> Old Bridge link that main.py's VALID_MOVES has.)
+  { name: 'Ada', actions: ['dance', '', 'go east', 'take lantern', 'go north'] },
   { name: 'Ada', actions: ['go north', 'take rope', 'go north', 'go east', 'go north', 'call for help'] },
   { name: 'Ada', actions: ['quit'] },
   { name: 'Ada', actions: ['go north', 'go north', 'go east', 'go north', 'go south', 'go south', 'go south', 'go south'] },

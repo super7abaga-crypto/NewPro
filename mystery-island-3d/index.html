@@ -135,6 +135,14 @@
   .surv-hint{font-size:11.5px;color:rgba(200,215,225,.45);margin-top:8px;line-height:1.5}
   .survivor .btn.primary{width:100%;margin-top:18px}
   .survivor .linkbtn{display:block;margin:14px auto 0}
+  .surv-pick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px}
+  .surv-card{text-align:left;padding:10px 11px;border-radius:11px;cursor:pointer;
+    background:rgba(12,18,24,.85);border:1px solid rgba(140,180,205,.22);color:inherit;
+    font:inherit;transition:border-color .15s,background .15s}
+  .surv-card .sc-title{display:block;font-size:12.5px;color:#eef6fb}
+  .surv-card .sc-perk{display:block;font-size:10.5px;margin-top:3px;color:rgba(200,215,225,.5);line-height:1.35}
+  .surv-card.on{border-color:rgba(255,168,82,.75);background:rgba(255,168,82,.1)}
+  .surv-card:focus-visible{outline:2px solid rgba(255,168,82,.6);outline-offset:2px}
   .err{color:#ff9d8a;font-size:12.5px;line-height:1.55;margin-top:12px}
   .err:empty{display:none}
 
@@ -248,6 +256,16 @@
       on the ridge is dark, and no ship will look for you until that beacon burns.
     </p>
     <form id="form-survivor" autocomplete="off" novalidate>
+      <div class="surv-pick" id="surv-pick" role="radiogroup" aria-label="Choose your survivor">
+        <button class="surv-card on" data-character="castaway" type="button" role="radio" aria-checked="true">
+          <span class="sc-title">The Castaway</span><span class="sc-perk">Balanced &middot; 5 energy</span></button>
+        <button class="surv-card" data-character="explorer" type="button" role="radio" aria-checked="false">
+          <span class="sc-title">The Explorer</span><span class="sc-perk">Quick &middot; tires 25% slower</span></button>
+        <button class="surv-card" data-character="sailor" type="button" role="radio" aria-checked="false">
+          <span class="sc-title">The Old Sailor</span><span class="sc-perk">Hardy &middot; 6 energy, bridge +1</span></button>
+        <button class="surv-card" data-character="scavenger" type="button" role="radio" aria-checked="false">
+          <span class="sc-title">The Scavenger</span><span class="sc-perk">Resourceful &middot; pickups +1</span></button>
+      </div>
       <label class="surv-label" for="survivor-name">Survivor name</label>
       <input id="survivor-name" name="survivor-name" type="text" maxlength="24"
              autocapitalize="words" autocorrect="off" spellcheck="false"

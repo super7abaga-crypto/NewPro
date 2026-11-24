@@ -151,6 +151,8 @@
       model.rotation.y = Math.PI;
       model.position.y = 0;
       group.add(model);
+      modelRef = model;
+      applyLook();
       [body, armL, armR, legL, legR].forEach((part) => { if (part) part.visible = false; });
       return true;
     }
@@ -270,5 +272,32 @@
   }
 
   root.MI = root.MI || {};
-  root.MI.character = { create };
+  /* The four original survivors share one rigged model; they are told apart
+   * by clothing tint and stance scale, matching web/world.js attributes. */
+  const LOOKS = {
+    castaway:  { tint: 0x8a6a45, scale: 1.00 },
+    explorer:  { tint: 0x6f7f4a, scale: 0.98 },
+    sailor:    { tint: 0x2f4a63, scale: 1.03 },
+    scavenger: { tint: 0x4a3f3a, scale: 0.96 },
+  };
+  let lookKey = 'castaway';
+  let modelRef = null;
+
+  function applyLook() {
+    if (!modelRef) return;
+    const look = LOOKS[lookKey] || LOOKS.castaway;
+    modelRef.scale.setScalar(look.scale);
+    modelRef.traverse((o) => {
+      if (!o.isMesh || !o.material || !o.material.color) return;
+      const tag = String(o.material.name || '') + ' ' + String(o.name || '');
+      if (/casualsuit|shoes|short|CanvasPack|Cube/i.test(tag)) o.material.color.setHex(look.tint);
+    });
+  }
+
+  function setLook(key) {
+    lookKey = LOOKS[key] ? key : 'castaway';
+    applyLook();
+  }
+
+  root.MI.character = { create, setLook, get look() { return lookKey; } };
 })(typeof window !== 'undefined' ? window : globalThis);

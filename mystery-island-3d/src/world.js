@@ -167,6 +167,15 @@
     });
     animated.push({ kind: 'ring', mesh: gate.userData.ring });
 
+    // west gate: the shoreline track that reaches the old bridge directly
+    const gateWest = post(THREE, -19, 0, 0x66d0ff);
+    group.add(gateWest);
+    anchors.push({
+      id: 'exit-west', action: 'go west', label: 'Follow the shoreline west',
+      x: -19, z: 0, radius: 3.4, hint: 'a shore path running to the bridge',
+    });
+    animated.push({ kind: 'ring', mesh: gateWest.userData.ring });
+
     return {
       group, colliders, anchors, animated,
       surface: 'sand',
@@ -286,7 +295,6 @@
     group.add(gateSouth, gateNorth);
     animated.push({ kind: 'ring', mesh: gateSouth.userData.ring });
     animated.push({ kind: 'ring', mesh: gateNorth.userData.ring });
-
     anchors.push({
       id: 'exit-south', action: 'go south', label: 'Back to the Beach',
       x: 0, z: 19, radius: 3.4, hint: 'the way you came',
@@ -496,10 +504,16 @@
 
     const gateWest = post(THREE, -6.6, 12, 0x66d0ff);
     const gateNorth = post(THREE, 0, -14, 0xffb066);
-    group.add(gateWest, gateNorth);
+    const gateEast = post(THREE, 7.0, 12, 0x66d0ff);
+    group.add(gateWest, gateNorth, gateEast);
     animated.push({ kind: 'ring', mesh: gateWest.userData.ring });
     animated.push({ kind: 'ring', mesh: gateNorth.userData.ring });
+    animated.push({ kind: 'ring', mesh: gateEast.userData.ring });
 
+    anchors.push({
+      id: 'exit-east', action: 'go east', label: 'Back along the shore to the Beach',
+      x: 7.0, z: 12, radius: 3.4, hint: 'the shoreline track, back the way you came',
+    });
     anchors.push({
       id: 'exit-west', action: 'go west', label: 'Back into the Cave',
       x: -6.6, z: 12, radius: 3.4, hint: 'the way back through the rock',

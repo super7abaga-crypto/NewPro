@@ -135,6 +135,14 @@
   .surv-hint{font-size:11.5px;color:rgba(200,215,225,.45);margin-top:8px;line-height:1.5}
   .survivor .btn.primary{width:100%;margin-top:18px}
   .survivor .linkbtn{display:block;margin:14px auto 0}
+  .surv-pick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 18px}
+  .surv-card{text-align:left;padding:10px 11px;border-radius:11px;cursor:pointer;
+    background:rgba(12,18,24,.85);border:1px solid rgba(140,180,205,.22);color:inherit;
+    font:inherit;transition:border-color .15s,background .15s}
+  .surv-card .sc-title{display:block;font-size:12.5px;color:#eef6fb}
+  .surv-card .sc-perk{display:block;font-size:10.5px;margin-top:3px;color:rgba(200,215,225,.5);line-height:1.35}
+  .surv-card.on{border-color:rgba(255,168,82,.75);background:rgba(255,168,82,.1)}
+  .surv-card:focus-visible{outline:2px solid rgba(255,168,82,.6);outline-offset:2px}
   .err{color:#ff9d8a;font-size:12.5px;line-height:1.55;margin-top:12px}
   .err:empty{display:none}
 
@@ -249,6 +257,16 @@
       on the ridge is dark, and no ship will look for you until that beacon burns.
     </p>
     <form id="form-survivor" autocomplete="off" novalidate>
+      <div class="surv-pick" id="surv-pick" role="radiogroup" aria-label="Choose your survivor">
+        <button class="surv-card on" data-character="castaway" type="button" role="radio" aria-checked="true">
+          <span class="sc-title">The Castaway</span><span class="sc-perk">Balanced &middot; 5 energy</span></button>
+        <button class="surv-card" data-character="explorer" type="button" role="radio" aria-checked="false">
+          <span class="sc-title">The Explorer</span><span class="sc-perk">Quick &middot; tires 25% slower</span></button>
+        <button class="surv-card" data-character="sailor" type="button" role="radio" aria-checked="false">
+          <span class="sc-title">The Old Sailor</span><span class="sc-perk">Hardy &middot; 6 energy, bridge +1</span></button>
+        <button class="surv-card" data-character="scavenger" type="button" role="radio" aria-checked="false">
+          <span class="sc-title">The Scavenger</span><span class="sc-perk">Resourceful &middot; pickups +1</span></button>
+      </div>
       <label class="surv-label" for="survivor-name">Survivor name</label>
       <input id="survivor-name" name="survivor-name" type="text" maxlength="24"
              autocapitalize="words" autocorrect="off" spellcheck="false"
@@ -3895,6 +3913,13 @@ void main() {
   'use strict';
 
   const START_LOCATION = 'Beach';
+  const CHARACTERS = {
+    castaway:  { key: 'castaway',  title: 'The Castaway',    energy: 5, drain: 1,    perk: 'Balanced: 5 energy.' },
+    explorer:  { key: 'explorer',  title: 'The Explorer',    energy: 5, drain: 0.75, perk: 'Quick: tires 25% slower.' },
+    sailor:    { key: 'sailor',    title: 'The Old Sailor',  energy: 6, drain: 1,    perk: 'Hardy: 6 energy, but the bridge costs 1 extra.' },
+    scavenger: { key: 'scavenger', title: 'The Scavenger',   energy: 4, drain: 1,    perk: 'Resourceful: each pickup restores 1 energy.' },
+  };
+  const CHARACTER_KEYS = ['castaway', 'explorer', 'sailor', 'scavenger'];
   const START_ENERGY = 5;
   const MAX_ENERGY = 5;
   const SWIM_COST = 3;
@@ -3908,7 +3933,7 @@ void main() {
       description:
         'Cold surf drags at the wreck of your boat. A campfire still smoulders above the tideline, ' +
         'and a path of broken shells leads north into the trees.',
-      exits: { north: { to: 'Jungle' } },
+      exits: { north: { to: 'Jungle' }, west: { to: 'Old Bridge' } },
     },
     Jungle: {
       description:
@@ -3928,6 +3953,7 @@ void main() {
         'churns. The lighthouse stands on the far side.',
       exits: {
         west: { to: 'Cave' },
+        east: { to: 'Beach' },
         north: {
           to: 'Lighthouse',
           requires: 'rope',
@@ -3959,11 +3985,16 @@ void main() {
   };
 
   // ---------------------------------------------------------------- state
-  function newGame(name) {
+  function newGame(name, characterKey) {
+    const character = CHARACTERS[characterKey] ? characterKey : 'castaway';
+    const sheet = CHARACTERS[character];
     return {
       name: (name || '').trim() || 'Player',
+      character,
+      maxEnergy: sheet.energy,
+      energyDebt: 0,
       location: START_LOCATION,
-      energy: START_ENERGY,
+      energy: sheet.energy,
       inventory: [],
       rested: false,
       turns: 0,
@@ -3992,7 +4023,7 @@ void main() {
     const lines = ['', '== ' + player.location + ' ==', here.description];
     const loot = itemsHere(player);
     if (loot.length) lines.push('You can see ' + loot.map((i) => ITEMS[i].label).join(', ') + '.');
-    lines.push('Energy: ' + player.energy + '/' + MAX_ENERGY + '   Inventory: ' + inventoryText(player));
+    lines.push('Energy: ' + player.energy + '/' + (player.maxEnergy || MAX_ENERGY) + '   Inventory: ' + inventoryText(player));
     return lines.join('\n');
   }
 
@@ -4102,6 +4133,14 @@ void main() {
     return "I don't understand '" + action + "'. Type 'help' to see your options.";
   }
 
+  function _moveCost(player, base) {
+    const sheet = CHARACTERS[player.character] || CHARACTERS.castaway;
+    player.energyDebt = (player.energyDebt || 0) + base * sheet.drain;
+    const cost = Math.floor(player.energyDebt + 1e-9);
+    player.energyDebt -= cost;
+    return cost;
+  }
+
   function _move(player, direction) {
     const exit = locationData(player).exits[direction];
     if (!exit) {
@@ -4112,7 +4151,10 @@ void main() {
       return exit.blocked || 'The way is blocked.';
     }
     player.location = exit.to;
-    return _spendEnergy(player, exit.cost || 1, 'You follow the trail ' + direction + ' and reach the ' + exit.to + '.');
+    let base = exit.cost || 1;
+    if (player.character === 'sailor' && exit.to === 'Lighthouse') base += 1;
+    return _spendEnergy(player, _moveCost(player, base),
+      'You follow the trail ' + direction + ' and reach the ' + exit.to + '.');
   }
 
   function _take(player, item) {
@@ -4120,7 +4162,12 @@ void main() {
     if (hasItem(player, item)) return 'You already have the ' + item + '.';
     if (ITEMS[item].location !== player.location) return 'There is no ' + item + ' here.';
     player.inventory.push(item);
-    return ITEMS[item].taken;
+    let taken = ITEMS[item].taken;
+    if (player.character === 'scavenger' && player.energy < (player.maxEnergy || MAX_ENERGY)) {
+      player.energy += 1;
+      taken += ' The Scavenger finds a little extra strength: +1 energy.';
+    }
+    return taken;
   }
 
   function _rest(player) {
@@ -4177,7 +4224,7 @@ void main() {
   root.MI = root.MI || {};
   root.MI.rules = {
     START_LOCATION, START_ENERGY, MAX_ENERGY, SWIM_COST, REST_GAIN, WIN_LOCATION,
-    CROSS_BRIDGE_ITEM, LIGHT_BEACON_ITEM, LOCATIONS, ITEMS,
+    CROSS_BRIDGE_ITEM, LIGHT_BEACON_ITEM, LOCATIONS, ITEMS, CHARACTERS, CHARACTER_KEYS,
     newGame, locationData, describeLocation, inventoryText, itemsHere, hasItem,
     canCrossBridge, canLightBeacon, isWin, isOver, isLost, outcomeText,
     availableActions, applyAction,
@@ -5050,6 +5097,15 @@ void main() {
     });
     animated.push({ kind: 'ring', mesh: gate.userData.ring });
 
+    // west gate: the shoreline track that reaches the old bridge directly
+    const gateWest = post(THREE, -19, 0, 0x66d0ff);
+    group.add(gateWest);
+    anchors.push({
+      id: 'exit-west', action: 'go west', label: 'Follow the shoreline west',
+      x: -19, z: 0, radius: 3.4, hint: 'a shore path running to the bridge',
+    });
+    animated.push({ kind: 'ring', mesh: gateWest.userData.ring });
+
     return {
       group, colliders, anchors, animated,
       surface: 'sand',
@@ -5169,7 +5225,6 @@ void main() {
     group.add(gateSouth, gateNorth);
     animated.push({ kind: 'ring', mesh: gateSouth.userData.ring });
     animated.push({ kind: 'ring', mesh: gateNorth.userData.ring });
-
     anchors.push({
       id: 'exit-south', action: 'go south', label: 'Back to the Beach',
       x: 0, z: 19, radius: 3.4, hint: 'the way you came',
@@ -5379,10 +5434,16 @@ void main() {
 
     const gateWest = post(THREE, -6.6, 12, 0x66d0ff);
     const gateNorth = post(THREE, 0, -14, 0xffb066);
-    group.add(gateWest, gateNorth);
+    const gateEast = post(THREE, 7.0, 12, 0x66d0ff);
+    group.add(gateWest, gateNorth, gateEast);
     animated.push({ kind: 'ring', mesh: gateWest.userData.ring });
     animated.push({ kind: 'ring', mesh: gateNorth.userData.ring });
+    animated.push({ kind: 'ring', mesh: gateEast.userData.ring });
 
+    anchors.push({
+      id: 'exit-east', action: 'go east', label: 'Back along the shore to the Beach',
+      x: 7.0, z: 12, radius: 3.4, hint: 'the shoreline track, back the way you came',
+    });
     anchors.push({
       id: 'exit-west', action: 'go west', label: 'Back into the Cave',
       x: -6.6, z: 12, radius: 3.4, hint: 'the way back through the rock',
@@ -5922,6 +5983,8 @@ void main() {
       model.rotation.y = Math.PI;
       model.position.y = 0;
       group.add(model);
+      modelRef = model;
+      applyLook();
       [body, armL, armR, legL, legR].forEach((part) => { if (part) part.visible = false; });
       return true;
     }
@@ -6041,7 +6104,34 @@ void main() {
   }
 
   root.MI = root.MI || {};
-  root.MI.character = { create };
+  /* The four original survivors share one rigged model; they are told apart
+   * by clothing tint and stance scale, matching web/world.js attributes. */
+  const LOOKS = {
+    castaway:  { tint: 0x8a6a45, scale: 1.00 },
+    explorer:  { tint: 0x6f7f4a, scale: 0.98 },
+    sailor:    { tint: 0x2f4a63, scale: 1.03 },
+    scavenger: { tint: 0x4a3f3a, scale: 0.96 },
+  };
+  let lookKey = 'castaway';
+  let modelRef = null;
+
+  function applyLook() {
+    if (!modelRef) return;
+    const look = LOOKS[lookKey] || LOOKS.castaway;
+    modelRef.scale.setScalar(look.scale);
+    modelRef.traverse((o) => {
+      if (!o.isMesh || !o.material || !o.material.color) return;
+      const tag = String(o.material.name || '') + ' ' + String(o.name || '');
+      if (/casualsuit|shoes|short|CanvasPack|Cube/i.test(tag)) o.material.color.setHex(look.tint);
+    });
+  }
+
+  function setLook(key) {
+    lookKey = LOOKS[key] ? key : 'castaway';
+    applyLook();
+  }
+
+  root.MI.character = { create, setLook, get look() { return lookKey; } };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -6949,6 +7039,7 @@ void main() {
         show('survivor');
         survivor.error('');
         survivor.busy(false); // a previous run may have left it disabled
+        survivor.character = survivor.character || 'castaway';
         const input = $('survivor-name');
         if (input) {
           input.value = prefill || '';
@@ -7002,6 +7093,21 @@ void main() {
         go.textContent = on ? 'Stepping ashore...' : 'Step onto the beach';
       },
       onBack(fn) { bind('survivor-back', fn); },
+      character: 'castaway',
+      onCharacter(fn) {
+        const cards = document.querySelectorAll('#surv-pick .surv-card');
+        Array.prototype.forEach.call(cards, (card) => {
+          card.addEventListener('click', () => {
+            survivor.character = card.getAttribute('data-character') || 'castaway';
+            Array.prototype.forEach.call(cards, (c) => {
+              const on = c === card;
+              c.classList.toggle('on', on);
+              c.setAttribute('aria-checked', on ? 'true' : 'false');
+            });
+            if (fn) fn(survivor.character);
+          });
+        });
+      },
     };
 
     /* ------------------------------------------------------------ wiring */
@@ -7393,10 +7499,11 @@ void main() {
     });
   }
 
-  function startGame(name, restored) {
+  function startGame(name, restored, character) {
     if (audio) { audio.init(); audio.resume(); }
-    rs = restored || rules.newGame(name);
+    rs = restored || rules.newGame(name, character);
     state = 'playing';
+    if (MI.character && MI.character.setLook) MI.character.setLook(rs.character || character || 'castaway');
     ui.hideScreens();
     ui.hud.on();
     loadLocation(rs.location, null);
@@ -7436,7 +7543,7 @@ void main() {
     ui.survivor.close();
     if (ui.survivor.busy) ui.survivor.busy(true);
     try {
-      startGame(result.name);
+      startGame(result.name, null, ui.survivor.character);
     } catch (err) {
       if (ui.survivor.busy) ui.survivor.busy(false);
       ui.survivor.error('The island failed to load. ' + (err && err.message ? err.message : ''));
@@ -7702,6 +7809,7 @@ void main() {
     },
   });
 
+  ui.survivor.onCharacter((key) => { if (MI.character && MI.character.setLook) MI.character.setLook(key); });
   ui.survivor.onSubmit((raw) => submitSurvivor(raw));
   ui.survivor.onBack(() => ui.show('menu'));
 

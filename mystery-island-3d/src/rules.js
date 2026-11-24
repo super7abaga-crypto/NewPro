@@ -10,6 +10,13 @@
   'use strict';
 
   const START_LOCATION = 'Beach';
+  const CHARACTERS = {
+    castaway:  { key: 'castaway',  title: 'The Castaway',    energy: 5, drain: 1,    perk: 'Balanced: 5 energy.' },
+    explorer:  { key: 'explorer',  title: 'The Explorer',    energy: 5, drain: 0.75, perk: 'Quick: tires 25% slower.' },
+    sailor:    { key: 'sailor',    title: 'The Old Sailor',  energy: 6, drain: 1,    perk: 'Hardy: 6 energy, but the bridge costs 1 extra.' },
+    scavenger: { key: 'scavenger', title: 'The Scavenger',   energy: 4, drain: 1,    perk: 'Resourceful: each pickup restores 1 energy.' },
+  };
+  const CHARACTER_KEYS = ['castaway', 'explorer', 'sailor', 'scavenger'];
   const START_ENERGY = 5;
   const MAX_ENERGY = 5;
   const SWIM_COST = 3;
@@ -23,7 +30,7 @@
       description:
         'Cold surf drags at the wreck of your boat. A campfire still smoulders above the tideline, ' +
         'and a path of broken shells leads north into the trees.',
-      exits: { north: { to: 'Jungle' } },
+      exits: { north: { to: 'Jungle' }, west: { to: 'Old Bridge' } },
     },
     Jungle: {
       description:
@@ -43,6 +50,7 @@
         'churns. The lighthouse stands on the far side.',
       exits: {
         west: { to: 'Cave' },
+        east: { to: 'Beach' },
         north: {
           to: 'Lighthouse',
           requires: 'rope',
@@ -74,11 +82,16 @@
   };
 
   // ---------------------------------------------------------------- state
-  function newGame(name) {
+  function newGame(name, characterKey) {
+    const character = CHARACTERS[characterKey] ? characterKey : 'castaway';
+    const sheet = CHARACTERS[character];
     return {
       name: (name || '').trim() || 'Player',
+      character,
+      maxEnergy: sheet.energy,
+      energyDebt: 0,
       location: START_LOCATION,
-      energy: START_ENERGY,
+      energy: sheet.energy,
       inventory: [],
       rested: false,
       turns: 0,
@@ -107,7 +120,7 @@
     const lines = ['', '== ' + player.location + ' ==', here.description];
     const loot = itemsHere(player);
     if (loot.length) lines.push('You can see ' + loot.map((i) => ITEMS[i].label).join(', ') + '.');
-    lines.push('Energy: ' + player.energy + '/' + MAX_ENERGY + '   Inventory: ' + inventoryText(player));
+    lines.push('Energy: ' + player.energy + '/' + (player.maxEnergy || MAX_ENERGY) + '   Inventory: ' + inventoryText(player));
     return lines.join('\n');
   }
 
@@ -217,6 +230,14 @@
     return "I don't understand '" + action + "'. Type 'help' to see your options.";
   }
 
+  function _moveCost(player, base) {
+    const sheet = CHARACTERS[player.character] || CHARACTERS.castaway;
+    player.energyDebt = (player.energyDebt || 0) + base * sheet.drain;
+    const cost = Math.floor(player.energyDebt + 1e-9);
+    player.energyDebt -= cost;
+    return cost;
+  }
+
   function _move(player, direction) {
     const exit = locationData(player).exits[direction];
     if (!exit) {
@@ -227,7 +248,10 @@
       return exit.blocked || 'The way is blocked.';
     }
     player.location = exit.to;
-    return _spendEnergy(player, exit.cost || 1, 'You follow the trail ' + direction + ' and reach the ' + exit.to + '.');
+    let base = exit.cost || 1;
+    if (player.character === 'sailor' && exit.to === 'Lighthouse') base += 1;
+    return _spendEnergy(player, _moveCost(player, base),
+      'You follow the trail ' + direction + ' and reach the ' + exit.to + '.');
   }
 
   function _take(player, item) {
@@ -235,7 +259,12 @@
     if (hasItem(player, item)) return 'You already have the ' + item + '.';
     if (ITEMS[item].location !== player.location) return 'There is no ' + item + ' here.';
     player.inventory.push(item);
-    return ITEMS[item].taken;
+    let taken = ITEMS[item].taken;
+    if (player.character === 'scavenger' && player.energy < (player.maxEnergy || MAX_ENERGY)) {
+      player.energy += 1;
+      taken += ' The Scavenger finds a little extra strength: +1 energy.';
+    }
+    return taken;
   }
 
   function _rest(player) {
@@ -292,7 +321,7 @@
   root.MI = root.MI || {};
   root.MI.rules = {
     START_LOCATION, START_ENERGY, MAX_ENERGY, SWIM_COST, REST_GAIN, WIN_LOCATION,
-    CROSS_BRIDGE_ITEM, LIGHT_BEACON_ITEM, LOCATIONS, ITEMS,
+    CROSS_BRIDGE_ITEM, LIGHT_BEACON_ITEM, LOCATIONS, ITEMS, CHARACTERS, CHARACTER_KEYS,
     newGame, locationData, describeLocation, inventoryText, itemsHere, hasItem,
     canCrossBridge, canLightBeacon, isWin, isOver, isLost, outcomeText,
     availableActions, applyAction,

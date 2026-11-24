@@ -209,6 +209,7 @@
         show('survivor');
         survivor.error('');
         survivor.busy(false); // a previous run may have left it disabled
+        survivor.character = survivor.character || 'castaway';
         const input = $('survivor-name');
         if (input) {
           input.value = prefill || '';
@@ -262,6 +263,21 @@
         go.textContent = on ? 'Stepping ashore...' : 'Step onto the beach';
       },
       onBack(fn) { bind('survivor-back', fn); },
+      character: 'castaway',
+      onCharacter(fn) {
+        const cards = document.querySelectorAll('#surv-pick .surv-card');
+        Array.prototype.forEach.call(cards, (card) => {
+          card.addEventListener('click', () => {
+            survivor.character = card.getAttribute('data-character') || 'castaway';
+            Array.prototype.forEach.call(cards, (c) => {
+              const on = c === card;
+              c.classList.toggle('on', on);
+              c.setAttribute('aria-checked', on ? 'true' : 'false');
+            });
+            if (fn) fn(survivor.character);
+          });
+        });
+      },
     };
 
     /* ------------------------------------------------------------ wiring */
