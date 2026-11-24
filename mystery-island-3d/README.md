@@ -163,3 +163,26 @@ into reach. Taps landed on nothing. The screen now scrolls, centres only when
 there is room, respects the safe-area inset, and pulls the button into view when
 the field gains focus. A rejected name now shows a visible message instead of
 silently doing nothing, and the button reports that it is working.
+
+## Movement, animation and atmosphere (Stage 2 + 3)
+
+The survivor is driven by three small modules, each pure and testable on its own:
+
+- `src/motion.js` — gravity, jumping and double jumping (two at most), coyote time,
+  rolling with a cooldown, sprint stamina, water entry, surface swimming, diving,
+  breath, ledge grab, climb, drop and vault. It owns the vertical axis; the room
+  clamp and scenery collision still resolve afterwards and the controller adopts
+  whatever position the collision pass produces, so the two never disagree.
+- `src/pose.js` — the reference project's channel blender (lean, bob, squash,
+  sway, breathe, tilt, drop, lift) adapted from the painted 2.5D figure to the
+  rigged GLB. Twenty states, all damped, so a state change eases rather than snaps.
+- `src/weather.js` — mist, falling leaves with respawn, water ripples and wind sway
+  on tall vegetation, with per-location presets and a quality-scaled particle budget.
+
+Controls: **W A S D / arrows** move, **Shift** sprints, **Space** jumps (twice),
+**C** rolls, **E** interacts, **F** lamp, **Esc** pause, **M** mute. While swimming,
+hold **S** to dive and **W** to rise.
+
+Water and ledges are declared per location by the world builders (`kit.water`,
+`kit.ledges`); the Beach has a swimmable shoreline and two ledges, the Old Bridge
+has the channel beneath it.

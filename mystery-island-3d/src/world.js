@@ -179,6 +179,11 @@
     return {
       group, colliders, anchors, animated,
       surface: 'sand',
+      water: [{ x0: -26, x1: 26, z0: 17, z1: 32, level: 0, depth: 2.4 }],
+      ledges: [
+        { x: 14, z: 6, y: 0.9, r: 1.6 },     // a low rock, vaultable
+        { x: -17, z: -5, y: 1.9, r: 1.5 },   // a taller shelf, worth hanging from
+      ],
       fog: { color: 0x0a1016, density: 0.030 },
       ambient: { color: 0x22303c, intensity: 0.62, sky: 0x2a3a48, ground: 0x0b0d10 },
       flashlightNeed: 0.4,
@@ -530,6 +535,8 @@
     return {
       group, colliders, anchors, animated,
       surface: 'wood',
+      water: [{ x0: -9, x1: 9, z0: -6, z1: 6, level: -2.4, depth: 6 }],
+      ledges: [],
       fog: { color: 0x05080c, density: 0.042 },
       ambient: { color: 0x1a2230, intensity: 0.50, sky: 0x1d2a36, ground: 0x04060a },
       flashlightNeed: 0.5,

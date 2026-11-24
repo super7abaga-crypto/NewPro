@@ -191,6 +191,16 @@
       state.running = running;
       state.moving = speed > 0.15;
 
+      /* The pose blender's channels are applied as whole-body transforms, so a
+       * lean, a roll tumble or a crouch reads on the rig as well as the gait. */
+      const ch = input && input.pose;
+      if (ch) {
+        group.rotation.x = ch.lean * 0.3;
+        group.rotation.z = ch.tilt * 0.7;
+        group.position.y = (state.baseY || 0) - ch.drop * 0.2 + ch.lift * 0.1;
+        if (state.torso) state.torso.rotation.x = ch.lean * 0.35;
+      }
+
       if (state.moving) {
         // phase advances with distance, so feet match ground speed
         state.phase += speed * dt * (running ? 2.1 : 2.7);
@@ -235,7 +245,8 @@
     }
 
     function setPosition(x, z, y) {
-      group.position.set(x, typeof y === 'number' ? y : 0, z);
+      state.baseY = typeof y === 'number' ? y : 0;
+      group.position.set(x, state.baseY, z);
     }
 
     function playPickup() {

@@ -5,7 +5,8 @@
   function create(opts) {
     const canvas = opts.canvas;
     const doc = opts.document || root.document;
-    const input = { forward: 0, right: 0, lookX: 0, lookY: 0, sprint: false };
+    const input = { forward: 0, right: 0, lookX: 0, lookY: 0, sprint: false,
+      jump: false, roll: false, down: false, up: false };
     const keys = Object.create(null);
     const handlers = opts.handlers || {};
     const isTouch = 'ontouchstart' in root || (root.matchMedia && root.matchMedia('(pointer: coarse)').matches);
@@ -23,7 +24,9 @@
       const k = e.key.toLowerCase();
       keys[k] = true;
       if (k === 'f') { if (handlers.onFlashlight) handlers.onFlashlight(); }
-      if (k === 'e' || k === ' ') { if (handlers.onInteract) handlers.onInteract(); e.preventDefault(); }
+      if (k === 'e') { if (handlers.onInteract) handlers.onInteract(); }
+      if (k === ' ') { input.jump = true; e.preventDefault(); }
+      if (k === 'c') { input.roll = true; }
       if (k === 'escape') { if (handlers.onPause) handlers.onPause(); }
       if (k === 'm') { if (handlers.onMute) handlers.onMute(); }
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].indexOf(k) !== -1) {
@@ -38,6 +41,8 @@
       const f = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0);
       const r = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0);
       input.sprint = !!(keys.shift);
+      input.down = !!(keys.s || keys.arrowdown);
+      input.up = !!(keys.w || keys.arrowup);
       if (isTouch && (touch.vector.x || touch.vector.y)) return;
       input.forward = f;
       input.right = r;

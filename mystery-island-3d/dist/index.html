@@ -5109,6 +5109,11 @@ void main() {
     return {
       group, colliders, anchors, animated,
       surface: 'sand',
+      water: [{ x0: -26, x1: 26, z0: 17, z1: 32, level: 0, depth: 2.4 }],
+      ledges: [
+        { x: 14, z: 6, y: 0.9, r: 1.6 },     // a low rock, vaultable
+        { x: -17, z: -5, y: 1.9, r: 1.5 },   // a taller shelf, worth hanging from
+      ],
       fog: { color: 0x0a1016, density: 0.030 },
       ambient: { color: 0x22303c, intensity: 0.62, sky: 0x2a3a48, ground: 0x0b0d10 },
       flashlightNeed: 0.4,
@@ -5460,6 +5465,8 @@ void main() {
     return {
       group, colliders, anchors, animated,
       surface: 'wood',
+      water: [{ x0: -9, x1: 9, z0: -6, z1: 6, level: -2.4, depth: 6 }],
+      ledges: [],
       fog: { color: 0x05080c, density: 0.042 },
       ambient: { color: 0x1a2230, intensity: 0.50, sky: 0x1d2a36, ground: 0x04060a },
       flashlightNeed: 0.5,
@@ -5829,6 +5836,706 @@ void main() {
 
 </script>
 <script>
+/* ==== src/motion.js ==== */
+/* Mystery Island 3D — survivor motion.
+ *
+ * Pure state machine: no THREE, no DOM, no timers of its own. The caller feeds it
+ * a timestep, the input, and a small world interface, and gets back a position and
+ * a state name. That makes every rule here testable without a browser.
+ *
+ * World interface (all optional, sane defaults if omitted):
+ *   groundAt(x, z)        -> number   height of the walkable surface
+ *   waterAt(x, z)         -> { level, depth } | null
+ *   ledgeAt(x, z, dir)    -> { y, out } | null    a grabbable lip in front
+ *   blockedAt(x, z, y)    -> boolean  something solid at that point
+ *
+ * Input vectors are world-space: input.forward is the +x component and input.right
+ * is the +z component. player.js resolves camera-relative input into these.
+ */
+(function (root) {
+  'use strict';
+
+  const CFG = {
+    gravity: 22,
+    jumpSpeed: 7.4,
+    doubleJumpSpeed: 6.6,
+    walk: 2.7,
+    run: 5.2,
+    rollTime: 0.55,
+    rollCooldown: 0.4,
+    rollSpeed: 7.4,
+    coyote: 0.12,
+    jumpBuffer: 0.14,
+    staminaMax: 1,
+    staminaDrain: 0.26,
+    staminaRegen: 0.2,
+    staminaGate: 0.12,
+    breathMax: 1,
+    breathDrain: 0.16,
+    breathRegen: 0.42,
+    swimSpeed: 2.3,
+    diveSpeed: 2.7,
+    buoyancy: 3.4,
+    stepUp: 0.45,
+    ledgeReach: 0.7,
+    vaultReach: 0.9,
+    vaultHeight: 1.1,
+    hangDrop: 1.6,
+  };
+
+  function create(options) {
+    const C = Object.assign({}, CFG, options || {});
+    const s = {
+      x: 0, y: 0, z: 0,
+      vy: 0,
+      speed: 0,
+      grounded: true,
+      jumps: 0,
+      coyote: 0,
+      buffer: 0,
+      rolling: 0,
+      rollCd: 0,
+      stamina: C.staminaMax,
+      tired: false,
+      inWater: false,
+      submerged: false,
+      breath: C.breathMax,
+      drowning: false,
+      hang: null,
+      climbing: 0,
+      vaulting: 0,
+      landTimer: 0,
+      state: 'idle',
+      events: [],
+    };
+
+    const world = {
+      groundAt: () => 0,
+      waterAt: () => null,
+      ledgeAt: () => null,
+      blockedAt: () => false,
+    };
+
+    function bind(w) {
+      if (!w) return;
+      if (typeof w.groundAt === 'function') world.groundAt = w.groundAt;
+      if (typeof w.waterAt === 'function') world.waterAt = w.waterAt;
+      if (typeof w.ledgeAt === 'function') world.ledgeAt = w.ledgeAt;
+      if (typeof w.blockedAt === 'function') world.blockedAt = w.blockedAt;
+    }
+
+    function emit(name, detail) {
+      s.events.push({ name, detail: detail || null });
+    }
+
+    function place(x, y, z) {
+      s.x = x; s.y = y; s.z = z;
+      s.vy = 0;
+      s.grounded = true;
+      s.jumps = 0;
+      s.state = 'idle';
+    }
+
+    function waterHere() {
+      const w = world.waterAt(s.x, s.z);
+      if (!w) return null;
+      const surface = w.level;
+      const bottom = w.level - w.depth;
+      if (s.y > surface + 0.05) return null;
+      if (s.y < bottom - 2) return null;
+      return { surface, bottom };
+    }
+
+    /* ---------------------------------------------------------------- water */
+    function updateWater(dt, input) {
+      const w = waterHere();
+      if (!w) {
+        if (s.inWater) { emit('exitwater'); s.inWater = false; s.submerged = false; }
+        if (s.breath < C.breathMax) s.breath = Math.min(C.breathMax, s.breath + C.breathRegen * dt);
+        if (s.drowning && s.breath > 0.25) s.drowning = false;
+        return false;
+      }
+      if (!s.inWater) { emit('enterwater'); s.inWater = true; s.jumps = 0; }
+
+      const dive = !!(input && input.down);
+      const wantUp = !!(input && input.up);
+      s.submerged = dive || s.y < w.surface - 1.15;
+
+      if (s.submerged) {
+        s.breath -= C.breathDrain * dt;
+        if (s.breath <= 0) {
+          s.breath = 0;
+          if (!s.drowning) { s.drowning = true; emit('drown'); }
+        }
+        // Underwater there is no gravity: holding dive sinks, releasing it rises.
+        s.vy = dive ? -C.diveSpeed : wantUp ? C.swimSpeed : C.swimSpeed * 0.7;
+        s.y = Math.max(w.bottom, Math.min(w.surface - 0.9, s.y + s.vy * dt));
+        s.submerged = s.y < w.surface - 1.15;
+      } else {
+        s.breath = Math.min(C.breathMax, s.breath + C.breathRegen * dt * 2);
+        if (s.drowning && s.breath > 0.25) s.drowning = false;
+        // floating at the surface
+        s.y += (w.surface - 1.05 - s.y) * Math.min(1, dt * C.buoyancy);
+        s.vy = 0;
+        if (dive) s.y -= dt * C.diveSpeed * 0.6;
+      }
+      s.grounded = false;
+      return true;
+    }
+
+    /* ---------------------------------------------------------------- ledges */
+    function tryGrab(input, dir) {
+      if (!s.hang) {
+        if (!(input && input.grab)) return false;
+        if (s.grounded || s.vy > 1.2) return false;
+        const ledge = world.ledgeAt(s.x, s.z, dir);
+        if (!ledge) return false;
+        if (ledge.y < s.y + 0.4 || ledge.y > s.y + 2.3) return false;
+        s.hang = { x: s.x, y: ledge.y, z: s.z, dir, t: 0 };
+        s.vy = 0;
+        s.y = ledge.y - 1.55;
+        s.jumps = 0;
+        emit('hang');
+        return true;
+      }
+      return true;
+    }
+
+    function updateHang(dt, input) {
+      if (!s.hang) return false;
+      s.hang.t += dt;
+      if (input && input.up) { s.climbing = 1; emit('climb'); s.hang = null; return true; }
+      if (input && input.down) { s.hang = null; s.vy = -1; emit('drop'); return true; }
+      if (input && input.jump) {
+        s.hang = null;
+        s.vy = C.jumpSpeed * 0.85;
+        s.jumps = 1;
+        emit('jump');
+        return true;
+      }
+      return true;
+    }
+
+    /* ----------------------------------------------------------------- roll */
+    function startRoll(input) {
+      if (!(input && input.roll)) return false;
+      if (s.rolling > 0 || s.rollCd > 0) return false;
+      if (s.inWater || s.hang) return false;
+      if (s.stamina < C.staminaGate) { s.tired = true; return false; }
+      s.rolling = C.rollTime;
+      s.stamina = Math.max(0, s.stamina - 0.18);
+      emit('roll');
+      return true;
+    }
+
+    /* --------------------------------------------------------------- update */
+    function update(dt, input, w) {
+      if (w) bind(w);
+      const i = input || {};
+      s.events.length = 0;
+
+      const f = typeof i.forward === 'number' ? i.forward : 0;
+      const r = typeof i.right === 'number' ? i.right : 0;
+      const mag = Math.min(1, Math.hypot(f, r));
+
+      s.rolling = Math.max(0, s.rolling - dt);
+      s.rollCd = Math.max(0, s.rollCd - dt);
+      s.landTimer = Math.max(0, s.landTimer - dt);
+      s.coyote = Math.max(0, s.coyote - dt);
+      s.buffer = Math.max(0, s.buffer - dt);
+      if (i.jump) s.buffer = C.jumpBuffer;
+
+      const dir = i.facing === undefined ? 0 : i.facing;
+
+      if (updateHang(dt, i)) {
+        s.state = 'hang';
+        return s;
+      }
+      if (s.climbing > 0) {
+        // a climb takes 0.45 s and ends standing on top of the lip
+        s.climbing = Math.max(0, s.climbing - dt / 0.45);
+        s.state = 'climb';
+        if (s.climbing === 0) {
+          const g = world.groundAt(s.x, s.z);
+          s.y = Math.max(s.y, g);
+          s.grounded = true;
+          s.vy = 0;
+        }
+        return s;
+      }
+      if (s.vaulting > 0) {
+        s.vaulting = Math.max(0, s.vaulting - dt / 0.5);
+        s.state = 'vault';
+        if (s.vaulting === 0) { s.grounded = true; s.vy = 0; }
+        return s;
+      }
+
+      const swimming = updateWater(dt, i);
+
+      if (!swimming && tryGrab(i, dir)) {
+        s.state = 'hang';
+        return s;
+      }
+
+      startRoll(i);
+
+      /* --------------------------------------------------------- horizontal */
+      let speed = 0;
+      if (s.rolling > 0) {
+        speed = C.rollSpeed;
+      } else if (swimming) {
+        speed = C.swimSpeed * mag;
+      } else {
+        const wantRun = !!(i.run || i.sprint) && s.stamina > C.staminaGate;
+        speed = (wantRun ? C.run : C.walk) * mag;
+        if (wantRun && mag > 0.1) {
+          s.stamina = Math.max(0, s.stamina - C.staminaDrain * dt);
+          if (s.stamina <= C.staminaGate && !s.tired) { s.tired = true; emit('tired'); }
+        }
+      }
+      if (!(i.run || i.sprint) || mag < 0.1) {
+        s.stamina = Math.min(C.staminaMax, s.stamina + C.staminaRegen * dt);
+        if (s.stamina > C.staminaGate * 2) s.tired = false;
+      }
+
+      const targetSpeed = speed;
+      s.speed = s.speed + (targetSpeed - s.speed) * Math.min(1, dt * 9);
+      if (s.speed < 0.02) s.speed = 0;
+      speed = s.speed;
+
+      if (mag > 0.01 && !swimming) {
+        const nx = s.x + (f / mag) * speed * dt;
+        const nz = s.z + (r / mag) * speed * dt;
+        if (!world.blockedAt(nx, s.z, s.y + 0.9)) s.x = nx;
+        if (!world.blockedAt(s.x, nz, s.y + 0.9)) s.z = nz;
+      } else if (mag > 0.01) {
+        const nx = s.x + (f / mag) * speed * dt;
+        const nz = s.z + (r / mag) * speed * dt;
+        s.x = nx; s.z = nz;
+      }
+
+      /* ------------------------------------------------------------ vertical */
+      if (!swimming) {
+        const ground = world.groundAt(s.x, s.z);
+
+        if (s.grounded && s.y > ground + C.stepUp) {
+          // walked off an edge
+          s.grounded = false;
+          s.coyote = C.coyote;
+          s.vy = 0;
+        }
+
+        if (s.buffer > 0) {
+          if (s.grounded || s.coyote > 0) {
+            s.vy = C.jumpSpeed;
+            s.grounded = false;
+            s.coyote = 0;
+            s.buffer = 0;
+            s.jumps = 1;
+            emit('jump');
+          } else if (s.jumps === 1) {
+            s.vy = C.doubleJumpSpeed;
+            s.jumps = 2;
+            s.buffer = 0;
+            emit('doublejump');
+          } else if (s.jumps === 0) {
+            // stepping off a ledge still leaves one jump in the air
+            s.vy = C.jumpSpeed;
+            s.jumps = 1;
+            s.buffer = 0;
+            emit('jump');
+          }
+        }
+
+        if (!s.grounded) {
+          s.vy -= C.gravity * dt;
+          s.y += s.vy * dt;
+        } else {
+          s.y = ground;
+          s.vy = 0;
+        }
+
+        if (s.y <= ground) {
+          if (!s.grounded && s.vy < -2) { emit('land', Math.abs(s.vy)); s.landTimer = 0.22; }
+          s.y = ground;
+          s.vy = 0;
+          s.grounded = true;
+          s.jumps = 0;
+        }
+
+        // vaulting over a low obstacle instead of walking into it
+        if (s.grounded && mag > 0.5 && (i.run || i.sprint)) {
+          const lip = world.ledgeAt(s.x, s.z, dir);
+          if (lip && lip.y > s.y + 0.35 && lip.y < s.y + C.vaultHeight) {
+            s.vaulting = 1;
+            s.y = lip.y + 0.05;
+            s.grounded = false;
+            emit('vault');
+          }
+        }
+      }
+
+      if (s.rolling > 0 && s.rollCd === 0 && s.rolling <= dt) s.rollCd = C.rollCooldown;
+
+      /* --------------------------------------------------------------- state */
+      s.state = s.rolling > 0 ? 'roll'
+        : swimming ? (s.submerged ? 'dive' : 'swim')
+        : !s.grounded ? (s.vy > 0.5 ? 'rise' : 'fall')
+        : s.landTimer > 0 ? 'land'
+        : mag < 0.05 ? 'idle'
+        : s.speed > C.walk * 1.05 ? 'run' : 'walk';
+
+      return s;
+    }
+
+    return {
+      state: s,
+      config: C,
+      place,
+      update,
+      bind,
+      takeEvents() {
+        const out = s.events.slice();
+        s.events.length = 0;
+        return out;
+      },
+      jump() { s.buffer = C.jumpBuffer; },
+      roll() { s.rolling = C.rollTime; },
+    };
+  }
+
+  root.MI = root.MI || {};
+  root.MI.motion = { create, CFG };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ==== src/pose.js ==== */
+/* Mystery Island 3D — pose blender.
+ *
+ * Adapted from the reference project's web/pose.js. The original blends a painted
+ * 2.5D figure by easing channels (lean, bob, squash, sway, breathe, tilt, drop,
+ * lift) toward per-state targets. The same channel model drives the rigged GLB:
+ * each channel maps onto a bone transform in character.js.
+ *
+ * Nothing here is a hard snap: every channel is damped toward its target, so a
+ * state change eases instead of jumping. Pure maths, no DOM, no THREE.
+ */
+(function (root) {
+  'use strict';
+
+  const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  /* Per-state channel targets. Unlisted channels fall back to 0 (sx/sy to 1). */
+  const TARGETS = {
+    idle:       { breathe: 0.5 },
+    walk:       { lean: 0.06, bob: 0.5 },
+    run:        { lean: 0.16, bob: 1 },
+    sprint:     { lean: 0.26, bob: 1.2 },
+    turn:       { sway: 0.5 },
+    rise:       { lean: -0.08, lift: 0.6, bob: 0.2 },
+    fall:       { lean: 0.1, drop: 0.4, bob: 0.1 },
+    apex:       { bob: 0.3 },
+    land:       { drop: 0.9, sx: 1.06, sy: 0.9, lean: 0.18 },
+    roll:       { tilt: 1, drop: 0.7, bob: 0.4 },
+    flip:       { tilt: 1, lift: 0.8 },
+    hang:       { lift: 0.85, lean: -0.05, drop: 0.2 },
+    climb:      { lift: 0.5, lean: 0.2, bob: 0.3 },
+    vault:      { tilt: 0.7, lift: 0.6, lean: 0.3 },
+    swim:       { lean: 0.7, bob: 0.3, sway: 0.3 },
+    dive:       { lean: 1.1, bob: 0.1 },
+    pickup:     { lean: 0.55, drop: 0.8 },
+    interact:   { lean: 0.2, lift: 0.25 },
+    hurt:       { lean: -0.35, tilt: 0.25, sx: 0.94, sy: 1.05 },
+    collapse:   { lean: 1.3, drop: 1, tilt: 0.6 },
+  };
+
+  const RATES = {
+    lean: 11, bob: 22, sx: 18, sy: 18, sway: 14,
+    breathe: 8, tilt: 16, drop: 20, lift: 16,
+  };
+
+  const CAPS = {
+    lean: 1.6, bob: 1.4, sx: 0.25, sy: 0.25, sway: 1.2,
+    breathe: 1, tilt: 1.2, drop: 1.2, lift: 1.2,
+  };
+
+  const STATES = Object.keys(TARGETS);
+
+  function create() {
+    const p = { lean: 0, bob: 0, sx: 1, sy: 1, sway: 0, breathe: 0, tilt: 0, drop: 0, lift: 0 };
+    let time = 0;
+    let state = 'idle';
+    let prev = 'idle';
+    let turn = 0;
+    let lastFacing = 1;
+    let interact = 0;
+    let hurt = 0;
+    let airFlip = 0;
+    let stride = 0;
+
+    function kick(kind) {
+      if (kind === 'doublejump') airFlip = 1;
+      else if (kind === 'interact' || kind === 'pickup') interact = 1;
+      else if (kind === 'hurt') hurt = 1;
+      else if (kind === 'land') { /* landTimer drives it */ }
+    }
+
+    /* Pick the state from the survivor's situation, in the same priority order
+     * the original used (fatal > water > hang > climb > vault > roll > air ...). */
+    function pick(g) {
+      if (g.over && !g.won) return 'collapse';
+      if (g.inWater) return g.submerged ? 'dive' : 'swim';
+      if (g.hang) return 'hang';
+      if (g.climbing > 0) return 'climb';
+      if (g.vaulting > 0) return 'vault';
+      if (g.rolling > 0) return 'roll';
+      if (airFlip > 0) return 'flip';
+      if (hurt > 0.4) return 'hurt';
+      if (interact > 0.4) return g.interactKind === 'pickup' ? 'pickup' : 'interact';
+      if (!g.grounded) return g.vy > 2 ? 'rise' : g.vy < -2 ? 'fall' : 'apex';
+      if (g.landTimer > 0) return 'land';
+      if (turn > 0.55) return 'turn';
+      if (g.speed < 0.05) return 'idle';
+      if (g.sprinting) return 'sprint';
+      return g.speed > g.walk * 1.05 ? 'run' : 'walk';
+    }
+
+    function update(dt, g) {
+      time += dt;
+      const facing = g.facing === undefined ? lastFacing : (g.facing >= 0 ? 1 : -1);
+      if (facing !== lastFacing) { turn = 1; lastFacing = facing; }
+      turn = Math.max(0, turn - dt * 5.5);
+      airFlip = Math.max(0, airFlip - dt * 2.2);
+      interact = Math.max(0, interact - dt * 2.4);
+      hurt = Math.max(0, hurt - dt * 3);
+
+      prev = state;
+      state = pick(g || {});
+
+      const target = TARGETS[state] || TARGETS.idle;
+      Object.keys(p).forEach((ch) => {
+        let want = target[ch] === undefined ? (ch === 'sx' || ch === 'sy' ? 1 : 0) : target[ch];
+        if (ch === 'breathe' && state === 'idle') {
+          want = 0.5 + Math.sin(time * 1.9) * 0.5;
+        }
+        if (ch === 'bob') {
+          stride += (g && g.speed ? g.speed : 0) * dt * Math.PI;
+          const amp = (TARGETS[state] || {}).bob || 0;
+          want = Math.sin(stride * 2) * amp;
+        }
+        if (ch === 'sway') {
+          const amp = (TARGETS[state] || {}).sway || 0;
+          want = amp ? Math.sin(stride) * amp : 0;
+        }
+        if (ch === 'lean' && state === 'idle') {
+          want = Math.sin(time * 0.63) * 0.02;
+        }
+        const rate = RATES[ch] || 12;
+        p[ch] = clamp(damp(p[ch], want, rate, dt), -CAPS[ch], CAPS[ch]);
+      });
+
+      return p;
+    }
+
+    return {
+      update,
+      kick,
+      channels: p,
+      get state() { return state; },
+      get previous() { return prev; },
+      get stride() { return stride; },
+      get turn() { return turn; },
+      states: STATES,
+      reset() {
+        Object.keys(p).forEach((k) => { p[k] = k === 'sx' || k === 'sy' ? 1 : 0; });
+        state = 'idle'; prev = 'idle'; turn = 0; interact = 0; hurt = 0; airFlip = 0;
+      },
+    };
+  }
+
+  root.MI = root.MI || {};
+  root.MI.pose = { create, STATES, TARGETS };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ==== src/weather.js ==== */
+/* Mystery Island 3D — weather and atmosphere.
+ *
+ * Wind, mist, falling leaves and water ripples, adapted from the reference
+ * project's environmental layer. Kept in one module so it can be swapped per
+ * location without touching the world builders, and so the particle budget
+ * stays visible in one place.
+ */
+(function (root) {
+  'use strict';
+
+  const PRESETS = {
+    Beach: { mist: 0.35, leaves: 0, ripples: 1, sway: 0.5, wind: 0.55 },
+    Jungle: { mist: 0.7, leaves: 1, ripples: 0, sway: 1, wind: 0.8 },
+    Cave: { mist: 0.5, leaves: 0, ripples: 0.3, sway: 0, wind: 0.15 },
+    'Old Bridge': { mist: 0.8, leaves: 0.2, ripples: 1, sway: 0.4, wind: 1 },
+    Lighthouse: { mist: 0.4, leaves: 0, ripples: 0.4, sway: 0.3, wind: 0.9 },
+  };
+
+  const BUDGET = { high: 1, medium: 0.7, low: 0.4 };
+
+  let THREE = null;
+  let scene = null;
+  let group = null;
+  let preset = PRESETS.Beach;
+  let leaves = null;
+  let mist = [];
+  let ripples = [];
+  let swayers = [];
+  let t = 0;
+
+  function clear() {
+    if (group && scene) {
+      scene.remove(group);
+      group.traverse((o) => {
+        if (o.geometry && o.geometry.dispose) o.geometry.dispose();
+        if (o.material && o.material.dispose) o.material.dispose();
+      });
+    }
+    group = null; leaves = null; mist = []; ripples = []; swayers = [];
+  }
+
+  function enter(T, S, location, kit, quality) {
+    THREE = T; scene = S;
+    clear();
+    preset = PRESETS[location] || PRESETS.Beach;
+    const scale = BUDGET[quality] || 1;
+    group = new THREE.Group();
+    group.name = 'weather';
+    scene.add(group);
+
+    /* ------------------------------------------------------------- mist */
+    const mistCount = Math.round(7 * preset.mist * scale);
+    for (let i = 0; i < mistCount; i++) {
+      const geo = new THREE.PlaneGeometry(22 + Math.random() * 10, 22 + Math.random() * 10);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x9fb6c4, transparent: true, opacity: 0.05 + Math.random() * 0.05,
+        depthWrite: false, side: THREE.DoubleSide,
+      });
+      const m = new THREE.Mesh(geo, mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set((Math.random() - 0.5) * 30, 0.6 + Math.random() * 1.8, (Math.random() - 0.5) * 30);
+      m.userData.drift = 0.2 + Math.random() * 0.4;
+      m.userData.phase = Math.random() * Math.PI * 2;
+      group.add(m);
+      mist.push(m);
+    }
+
+    /* ----------------------------------------------------------- leaves */
+    const leafCount = Math.round(70 * preset.leaves * scale);
+    if (leafCount > 0) {
+      const positions = new Float32Array(leafCount * 3);
+      const speeds = new Float32Array(leafCount);
+      for (let i = 0; i < leafCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 34;
+        positions[i * 3 + 1] = Math.random() * 9;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 34;
+        speeds[i] = 0.4 + Math.random() * 0.9;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      leaves = new THREE.Points(geo, new THREE.PointsMaterial({
+        color: 0x7f8f4a, size: 0.13, transparent: true, opacity: 0.75, depthWrite: false,
+      }));
+      leaves.userData.speeds = speeds;
+      group.add(leaves);
+    }
+
+    /* ---------------------------------------------------------- ripples */
+    const rippleCount = Math.round(10 * preset.ripples * scale);
+    for (let i = 0; i < rippleCount; i++) {
+      const geo = new THREE.RingGeometry(0.3, 0.42, 20);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xbfe0ef, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false,
+      });
+      const r = new THREE.Mesh(geo, mat);
+      r.rotation.x = -Math.PI / 2;
+      const zone = kit && kit.water && kit.water.length ? kit.water[0] : null;
+      const cx = zone ? (zone.x0 + zone.x1) / 2 : 0;
+      const cz = zone ? (zone.z0 + zone.z1) / 2 : 16;
+      r.position.set(cx + (Math.random() - 0.5) * 14, (zone ? zone.level : 0) + 0.03, cz + (Math.random() - 0.5) * 8);
+      r.userData.phase = Math.random();
+      group.add(r);
+      ripples.push(r);
+    }
+
+    /* --------------------------------------------- wind on tall vegetation */
+    swayers = [];
+    if (kit && kit.group && preset.sway > 0) {
+      const box = new THREE.Box3();
+      kit.group.traverse((o) => {
+        if (!o.isMesh || !o.geometry) return;
+        box.setFromObject(o);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        // tall and narrow reads as a trunk or a stem
+        if (size.y > 3 && size.y < 12 && Math.max(size.x, size.z) < 1.6) {
+          o.userData.swayBase = o.rotation.z;
+          o.userData.swayPhase = Math.random() * Math.PI * 2;
+          swayers.push(o);
+        }
+      });
+    }
+  }
+
+  function update(dt, playerPos, camera) {
+    if (!group) return;
+    t += dt;
+    const wind = preset.wind;
+
+    for (let i = 0; i < mist.length; i++) {
+      const m = mist[i];
+      m.position.x += Math.sin(t * 0.2 + m.userData.phase) * dt * m.userData.drift * wind;
+      m.position.z += Math.cos(t * 0.16 + m.userData.phase) * dt * m.userData.drift * wind;
+    }
+
+    if (leaves) {
+      const pos = leaves.geometry.attributes.position;
+      const arr = pos.array;
+      const speeds = leaves.userData.speeds;
+      for (let i = 0; i < speeds.length; i++) {
+        const iy = i * 3 + 1;
+        arr[iy] -= speeds[i] * dt * 0.55;
+        arr[i * 3] += Math.sin(t * 0.9 + i) * dt * 0.45 * wind;
+        arr[i * 3 + 2] += Math.cos(t * 0.7 + i) * dt * 0.35 * wind;
+        if (arr[iy] < 0.05) {
+          arr[iy] = 8 + Math.random() * 3;
+          arr[i * 3] = (Math.random() - 0.5) * 34;
+          arr[i * 3 + 2] = (Math.random() - 0.5) * 34;
+        }
+      }
+      pos.needsUpdate = true;
+    }
+
+    for (let i = 0; i < ripples.length; i++) {
+      const r = ripples[i];
+      r.userData.phase = (r.userData.phase + dt * 0.35) % 1;
+      const s = 1 + r.userData.phase * 4;
+      r.scale.set(s, s, s);
+      r.material.opacity = 0.22 * (1 - r.userData.phase);
+    }
+
+    for (let i = 0; i < swayers.length; i++) {
+      const o = swayers[i];
+      const base = o.userData.swayBase || 0;
+      o.rotation.z = base + Math.sin(t * 0.9 + o.userData.swayPhase) * 0.035 * wind * preset.sway;
+    }
+  }
+
+  root.MI = root.MI || {};
+  root.MI.weather = { enter, update, clear, PRESETS, get current() { return preset; } };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
 /* ==== src/character.js ==== */
 /* Mystery Island 3D — the visible survivor.
  *
@@ -6023,6 +6730,16 @@ void main() {
       state.running = running;
       state.moving = speed > 0.15;
 
+      /* The pose blender's channels are applied as whole-body transforms, so a
+       * lean, a roll tumble or a crouch reads on the rig as well as the gait. */
+      const ch = input && input.pose;
+      if (ch) {
+        group.rotation.x = ch.lean * 0.3;
+        group.rotation.z = ch.tilt * 0.7;
+        group.position.y = (state.baseY || 0) - ch.drop * 0.2 + ch.lift * 0.1;
+        if (state.torso) state.torso.rotation.x = ch.lean * 0.35;
+      }
+
       if (state.moving) {
         // phase advances with distance, so feet match ground speed
         state.phase += speed * dt * (running ? 2.1 : 2.7);
@@ -6067,7 +6784,8 @@ void main() {
     }
 
     function setPosition(x, z, y) {
-      group.position.set(x, typeof y === 'number' ? y : 0, z);
+      state.baseY = typeof y === 'number' ? y : 0;
+      group.position.set(x, state.baseY, z);
     }
 
     function playPickup() {
@@ -6166,6 +6884,31 @@ void main() {
       scene.add(character.group);
     }
 
+    const motion = root.MI && root.MI.motion ? root.MI.motion.create() : null;
+    const pose = root.MI && root.MI.pose ? root.MI.pose.create() : null;
+
+    /* The world interface the controller queries each step. */
+    const motionWorld = {
+      groundAt: () => 0,
+      waterAt: (x, z) => {
+        const zones = state.water || [];
+        for (let i = 0; i < zones.length; i++) {
+          const w = zones[i];
+          if (x > w.x0 && x < w.x1 && z > w.z0 && z < w.z1) return { level: w.level, depth: w.depth };
+        }
+        return null;
+      },
+      ledgeAt: (x, z) => {
+        const list = state.ledges || [];
+        for (let i = 0; i < list.length; i++) {
+          const l = list[i];
+          if (Math.hypot(x - l.x, z - l.z) < (l.r || 1.3)) return { y: l.y, out: l.out || 0.4 };
+        }
+        return null;
+      },
+      blockedAt: () => false,
+    };
+
     const pos = new THREE.Vector3(0, 0, 12);
 
     const state = {
@@ -6181,6 +6924,9 @@ void main() {
       clamp: null,
       surface: 'sand',
       walked: 0,
+      water: [],
+      ledges: [],
+      motion: null,
       lastStep: 0,
       shake: 0,
       shakeT: 0,
@@ -6329,6 +7075,39 @@ void main() {
         moveDir.z /= mag;
         const desired = Math.atan2(-moveDir.x, -moveDir.z);
         state.facing = angleLerp(state.facing, desired, Math.min(1, dt * 10));
+      }
+
+      if (motion) {
+        // a room change teleports the survivor; keep the controller in step
+        if (Math.hypot(motion.state.x - pos.x, motion.state.z - pos.z) > 3) {
+          motion.place(pos.x, pos.y || 0, pos.z);
+        }
+        const st = motion.update(dt, {
+          forward: mag > 0.01 ? moveDir.x : 0,
+          right: mag > 0.01 ? moveDir.z : 0,
+          run: wantRun,
+          jump: !!(input && input.jump),
+          roll: !!(input && input.roll),
+          grab: true,
+          down: !!(input && (input.down || input.back)),
+          up: !!(input && input.up),
+          facing: state.facing,
+        }, motionWorld);
+        if (input) { input.jump = false; input.roll = false; }
+        pos.x = st.x;
+        pos.z = st.z;
+        pos.y = st.y;
+        collide();
+        /* collide() may push the survivor out of scenery. If it did, the
+         * controller has to adopt that position or the two disagree and the
+         * survivor drifts against the wall it was just moved out of. */
+        if (Math.hypot(pos.x - st.x, pos.z - st.z) > 0.001) {
+          motion.place(pos.x, pos.y || 0, pos.z);
+        }
+        state.motion = st;
+        state.speed = st.speed;
+        state.running = st.state === 'run' || st.state === 'sprint';
+      } else if (mag > 0.01) {
         pos.x += moveDir.x * state.speed * dt;
         pos.z += moveDir.z * state.speed * dt;
         collide();
@@ -6346,14 +7125,42 @@ void main() {
       }
 
       if (character) {
-        character.setPosition(pos.x, pos.z);
+        character.setPosition(pos.x, pos.z, pos.y || 0);
         character.setFacing(state.facing, dt, false);
-        character.update(dt, { speed: state.speed, running: state.running });
+        let channels = null;
+        if (pose) {
+          const st = state.motion || {};
+          channels = pose.update(dt, {
+            grounded: st.grounded !== false,
+            vy: st.vy || 0,
+            speed: state.speed,
+            walk: WALK,
+            facing: Math.cos(state.facing) >= 0 ? 1 : -1,
+            inWater: !!st.inWater,
+            submerged: !!st.submerged,
+            hang: st.hang,
+            climbing: st.climbing || 0,
+            vaulting: st.vaulting || 0,
+            rolling: st.rolling || 0,
+            landTimer: st.landTimer || 0,
+            sprinting: state.running,
+            over: !!state.over,
+            won: !!state.won,
+          });
+        }
+        character.update(dt, {
+          speed: state.speed, running: state.running,
+          pose: channels, state: state.motion ? state.motion.state : null,
+        });
       }
 
       placeCamera(dt, false);
       updateLights(dt);
     }
+
+    function setWater(zones) { state.water = Array.isArray(zones) ? zones : []; }
+    function setLedges(list) { state.ledges = Array.isArray(list) ? list : []; }
+    function setOutcome(over, won) { state.over = !!over; state.won = !!won; }
 
     function setSensitivity(v) {
       state.sensitivity = 0.0022 * (v || 1);
@@ -6391,6 +7198,7 @@ void main() {
       state,
       character,
       setKit, teleport, update, setSensitivity,
+      setWater, setLedges, setOutcome, motion, pose,
       setFlashlight, toggleFlashlight, shake, setWeak, flinch, celebrate,
       get facing() { return state.facing; },
       get cameraYaw() { return state.cameraYaw; },
@@ -6413,7 +7221,8 @@ void main() {
   function create(opts) {
     const canvas = opts.canvas;
     const doc = opts.document || root.document;
-    const input = { forward: 0, right: 0, lookX: 0, lookY: 0, sprint: false };
+    const input = { forward: 0, right: 0, lookX: 0, lookY: 0, sprint: false,
+      jump: false, roll: false, down: false, up: false };
     const keys = Object.create(null);
     const handlers = opts.handlers || {};
     const isTouch = 'ontouchstart' in root || (root.matchMedia && root.matchMedia('(pointer: coarse)').matches);
@@ -6431,7 +7240,9 @@ void main() {
       const k = e.key.toLowerCase();
       keys[k] = true;
       if (k === 'f') { if (handlers.onFlashlight) handlers.onFlashlight(); }
-      if (k === 'e' || k === ' ') { if (handlers.onInteract) handlers.onInteract(); e.preventDefault(); }
+      if (k === 'e') { if (handlers.onInteract) handlers.onInteract(); }
+      if (k === ' ') { input.jump = true; e.preventDefault(); }
+      if (k === 'c') { input.roll = true; }
       if (k === 'escape') { if (handlers.onPause) handlers.onPause(); }
       if (k === 'm') { if (handlers.onMute) handlers.onMute(); }
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].indexOf(k) !== -1) {
@@ -6446,6 +7257,8 @@ void main() {
       const f = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0);
       const r = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0);
       input.sprint = !!(keys.shift);
+      input.down = !!(keys.s || keys.arrowdown);
+      input.up = !!(keys.w || keys.arrowup);
       if (isTouch && (touch.vector.x || touch.vector.y)) return;
       input.forward = f;
       input.right = r;
@@ -7369,6 +8182,9 @@ void main() {
 
     const spawn = entryPoint(location, fromDirection);
     player.setKit(kit);
+    player.setWater(kit.water);
+    player.setLedges(kit.ledges);
+    if (MI.weather) MI.weather.enter(THREE, scene, location, kit, settings.quality);
     player.teleport(spawn.x, spawn.z, spawn.yaw);
     player.setFlashlight(kit.flashlightNeed >= 1 ? true : player.state.flashlightOn);
 
@@ -7648,6 +8464,7 @@ void main() {
     if (state === 'playing' && kit) {
       controls.update();
       player.update(dt, controls.input);
+      if (MI.weather) MI.weather.update(dt, player.pos, camera);
       kit.update(dt, t);
       director.update(dt, { playerPos: player.pos, camera, scene });
       audio.tickHeartbeat(dt);

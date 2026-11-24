@@ -222,6 +222,9 @@
 
     const spawn = entryPoint(location, fromDirection);
     player.setKit(kit);
+    player.setWater(kit.water);
+    player.setLedges(kit.ledges);
+    if (MI.weather) MI.weather.enter(THREE, scene, location, kit, settings.quality);
     player.teleport(spawn.x, spawn.z, spawn.yaw);
     player.setFlashlight(kit.flashlightNeed >= 1 ? true : player.state.flashlightOn);
 
@@ -501,6 +504,7 @@
     if (state === 'playing' && kit) {
       controls.update();
       player.update(dt, controls.input);
+      if (MI.weather) MI.weather.update(dt, player.pos, camera);
       kit.update(dt, t);
       director.update(dt, { playerPos: player.pos, camera, scene });
       audio.tickHeartbeat(dt);

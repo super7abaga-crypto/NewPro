@@ -27,6 +27,31 @@
       scene.add(character.group);
     }
 
+    const motion = root.MI && root.MI.motion ? root.MI.motion.create() : null;
+    const pose = root.MI && root.MI.pose ? root.MI.pose.create() : null;
+
+    /* The world interface the controller queries each step. */
+    const motionWorld = {
+      groundAt: () => 0,
+      waterAt: (x, z) => {
+        const zones = state.water || [];
+        for (let i = 0; i < zones.length; i++) {
+          const w = zones[i];
+          if (x > w.x0 && x < w.x1 && z > w.z0 && z < w.z1) return { level: w.level, depth: w.depth };
+        }
+        return null;
+      },
+      ledgeAt: (x, z) => {
+        const list = state.ledges || [];
+        for (let i = 0; i < list.length; i++) {
+          const l = list[i];
+          if (Math.hypot(x - l.x, z - l.z) < (l.r || 1.3)) return { y: l.y, out: l.out || 0.4 };
+        }
+        return null;
+      },
+      blockedAt: () => false,
+    };
+
     const pos = new THREE.Vector3(0, 0, 12);
 
     const state = {
@@ -42,6 +67,9 @@
       clamp: null,
       surface: 'sand',
       walked: 0,
+      water: [],
+      ledges: [],
+      motion: null,
       lastStep: 0,
       shake: 0,
       shakeT: 0,
@@ -190,6 +218,39 @@
         moveDir.z /= mag;
         const desired = Math.atan2(-moveDir.x, -moveDir.z);
         state.facing = angleLerp(state.facing, desired, Math.min(1, dt * 10));
+      }
+
+      if (motion) {
+        // a room change teleports the survivor; keep the controller in step
+        if (Math.hypot(motion.state.x - pos.x, motion.state.z - pos.z) > 3) {
+          motion.place(pos.x, pos.y || 0, pos.z);
+        }
+        const st = motion.update(dt, {
+          forward: mag > 0.01 ? moveDir.x : 0,
+          right: mag > 0.01 ? moveDir.z : 0,
+          run: wantRun,
+          jump: !!(input && input.jump),
+          roll: !!(input && input.roll),
+          grab: true,
+          down: !!(input && (input.down || input.back)),
+          up: !!(input && input.up),
+          facing: state.facing,
+        }, motionWorld);
+        if (input) { input.jump = false; input.roll = false; }
+        pos.x = st.x;
+        pos.z = st.z;
+        pos.y = st.y;
+        collide();
+        /* collide() may push the survivor out of scenery. If it did, the
+         * controller has to adopt that position or the two disagree and the
+         * survivor drifts against the wall it was just moved out of. */
+        if (Math.hypot(pos.x - st.x, pos.z - st.z) > 0.001) {
+          motion.place(pos.x, pos.y || 0, pos.z);
+        }
+        state.motion = st;
+        state.speed = st.speed;
+        state.running = st.state === 'run' || st.state === 'sprint';
+      } else if (mag > 0.01) {
         pos.x += moveDir.x * state.speed * dt;
         pos.z += moveDir.z * state.speed * dt;
         collide();
@@ -207,14 +268,42 @@
       }
 
       if (character) {
-        character.setPosition(pos.x, pos.z);
+        character.setPosition(pos.x, pos.z, pos.y || 0);
         character.setFacing(state.facing, dt, false);
-        character.update(dt, { speed: state.speed, running: state.running });
+        let channels = null;
+        if (pose) {
+          const st = state.motion || {};
+          channels = pose.update(dt, {
+            grounded: st.grounded !== false,
+            vy: st.vy || 0,
+            speed: state.speed,
+            walk: WALK,
+            facing: Math.cos(state.facing) >= 0 ? 1 : -1,
+            inWater: !!st.inWater,
+            submerged: !!st.submerged,
+            hang: st.hang,
+            climbing: st.climbing || 0,
+            vaulting: st.vaulting || 0,
+            rolling: st.rolling || 0,
+            landTimer: st.landTimer || 0,
+            sprinting: state.running,
+            over: !!state.over,
+            won: !!state.won,
+          });
+        }
+        character.update(dt, {
+          speed: state.speed, running: state.running,
+          pose: channels, state: state.motion ? state.motion.state : null,
+        });
       }
 
       placeCamera(dt, false);
       updateLights(dt);
     }
+
+    function setWater(zones) { state.water = Array.isArray(zones) ? zones : []; }
+    function setLedges(list) { state.ledges = Array.isArray(list) ? list : []; }
+    function setOutcome(over, won) { state.over = !!over; state.won = !!won; }
 
     function setSensitivity(v) {
       state.sensitivity = 0.0022 * (v || 1);
@@ -252,6 +341,7 @@
       state,
       character,
       setKit, teleport, update, setSensitivity,
+      setWater, setLedges, setOutcome, motion, pose,
       setFlashlight, toggleFlashlight, shake, setWeak, flinch, celebrate,
       get facing() { return state.facing; },
       get cameraYaw() { return state.cameraYaw; },

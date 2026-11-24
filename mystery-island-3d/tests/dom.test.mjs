@@ -140,7 +140,9 @@ check('character starts idle', survivor.moving === false);
 
 // drive the controller directly to prove walking animates the body
 const startPhase = survivor.phase;
-for (let i = 0; i < 12; i += 1) w.MI.game.player.update(0.033, { forward: 1, right: 0 });
+// 24 frames: enough to accelerate and clear the spawn pocket, not enough to
+// reach the shoreline, where swimming would cap the speed by design
+for (let i = 0; i < 24; i += 1) w.MI.game.player.update(0.033, { forward: 1, right: 0 });
 check('walking advances the animation phase', survivor.phase > startPhase, survivor.phase.toFixed(2));
 check('walking swings the legs', Math.abs(survivor.legL.rotation.x) > 0.05,
   survivor.legL.rotation.x.toFixed(3));
