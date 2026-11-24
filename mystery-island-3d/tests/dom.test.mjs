@@ -101,9 +101,10 @@ w.MI.game.submitSurvivor('');
 await wait(80);
 check('empty name is refused', /Enter a name/.test(d.getElementById('survivor-error').textContent),
   d.getElementById('survivor-error').textContent);
-w.MI.game.submitSurvivor('Ada9');
+w.MI.game.submitSurvivor('A'.repeat(40));
 await wait(80);
-check('digits are refused', /No numbers or symbols/.test(d.getElementById('survivor-error').textContent));
+check('an over-long name is refused', /too long/i.test(d.getElementById('survivor-error').textContent),
+  d.getElementById('survivor-error').textContent);
 check('still on the survivor screen', w.MI.game.state === 'menu', w.MI.game.state);
 
 // a real submission starts the game

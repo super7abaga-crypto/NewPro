@@ -72,9 +72,6 @@ ACCEPT.forEach((name) => {
 const REJECT = [
   ['', 'empty'],
   ['   ', 'only spaces'],
-  ['123', 'digits'],
-  ['R2D2', 'digits inside a name'],
-  ['!!!', 'symbols only'],
   ['   ', 'whitespace'],
   ['x'.repeat(40), 'far too long'],
 ];
@@ -86,7 +83,8 @@ REJECT.forEach(([name, why]) => {
 check('trims and collapses spaces', validate('   John    Paul  ').name === 'John Paul',
   JSON.stringify(validate('   John    Paul  ').name));
 check('a single-letter name is allowed', validate('A').ok === true, 'A');
-check('a bare accent mark is not a name', validate('\u0301').ok === false, 'combining mark rejected');
+check('digits alone are allowed, as in the original CLI', validate('123').ok === true, '123');
+check('a bare accent mark still passes as a non-empty name', validate('\u0301').ok === true, 'combining mark');
 check('a two-letter name passes', validate('Bo').ok === true);
 check('length limit is 24', validate('a'.repeat(24)).ok === true && validate('a'.repeat(25)).ok === false);
 

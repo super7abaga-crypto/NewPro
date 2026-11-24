@@ -369,8 +369,6 @@
    * Unicode-aware: phone keyboards type U+2019 for apostrophes, and names like
    * José or Chukwuemeka must pass. */
   const NAME_MAX = 24;
-  const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M} .'\u2019\u02BC-]*$/u;
-
   function openSurvivor() {
     if (audio) { audio.init(); audio.resume(); }
     ui.survivor.open('');
@@ -383,12 +381,7 @@
     name = name.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!name) return { ok: false, name: '', error: 'Enter a name so the story can address you.' };
     if (name.length > NAME_MAX) return { ok: false, name, error: 'That name is too long. Keep it under ' + (NAME_MAX + 1) + ' characters.' };
-    if (!/[\p{L}]/u.test(name)) {
-      return { ok: false, name, error: 'A name needs at least one letter.' };
-    }
-    if (!NAME_PATTERN.test(name)) {
-      return { ok: false, name, error: 'Use letters, spaces, hyphens or apostrophes. No numbers or symbols.' };
-    }
+    // The original CLI accepts any non-empty name, so the 3D build does too.
     return { ok: true, name, error: '' };
   }
 
