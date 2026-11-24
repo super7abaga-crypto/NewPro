@@ -121,8 +121,10 @@
   @media (max-width:520px){ .inv{max-width:56vw} #prompt{bottom:26%} }
 
   /* ---------- survivor creation ---------- */
-  .survivor{background:radial-gradient(ellipse at 50% 20%, rgba(28,44,58,.55), rgba(4,6,9,.96) 62%)}
-  .surv-wrap{width:min(92vw,540px);margin:0 auto;text-align:left}
+  .survivor{background:radial-gradient(ellipse at 50% 20%, rgba(28,44,58,.55), rgba(4,6,9,.96) 62%);
+    justify-content:flex-start;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+  .surv-wrap{width:min(92vw,540px);margin:auto;text-align:left}
   .surv-kicker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);opacity:.8;margin-bottom:10px}
   .surv-title{font-family:Georgia,'Times New Roman',serif;font-size:clamp(26px,7vw,40px);line-height:1.1;margin:0 0 14px;color:#f2ece2}
   .surv-intro{font-size:13.5px;line-height:1.75;color:rgba(226,236,244,.72);margin:0 0 22px}
@@ -133,7 +135,8 @@
   .surv-hint{font-size:11.5px;color:rgba(200,215,225,.45);margin-top:8px;line-height:1.5}
   .survivor .btn.primary{width:100%;margin-top:18px}
   .survivor .linkbtn{display:block;margin:14px auto 0}
-  .survivor .err{margin-top:12px}
+  .err{color:#ff9d8a;font-size:12.5px;line-height:1.55;margin-top:12px}
+  .err:empty{display:none}
 
   /* ---------- roadmap: minimap + objective arrow ---------- */
   #roadmap{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;
@@ -244,12 +247,13 @@
       salt in your throat and nothing but the clothes you swam in. The lighthouse
       on the ridge is dark, and no ship will look for you until that beacon burns.
     </p>
-    <form id="form-survivor" autocomplete="off">
+    <form id="form-survivor" autocomplete="off" novalidate>
       <label class="surv-label" for="survivor-name">Survivor name</label>
-      <input id="survivor-name" name="survivor-name" type="text" maxlength="20"
+      <input id="survivor-name" name="survivor-name" type="text" maxlength="24"
              autocapitalize="words" autocorrect="off" spellcheck="false"
+             enterkeyhint="done" autocomplete="off"
              placeholder="Type your name" aria-describedby="survivor-hint survivor-error" />
-      <div class="surv-hint" id="survivor-hint">Two to twenty characters. Letters, spaces, hyphens and apostrophes.</div>
+      <div class="surv-hint" id="survivor-hint">Up to 24 characters. Any letters, including accented ones, plus spaces, hyphens and apostrophes.</div>
       <div class="err" id="survivor-error"></div>
       <button class="btn primary" id="survivor-go" type="submit">Step onto the beach</button>
     </form>

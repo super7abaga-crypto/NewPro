@@ -110,7 +110,7 @@ tested without a browser.
 
 ```bash
 npm install          # dev only, for jsdom
-npm test             # 314 checks
+npm test             # 365 checks
 ```
 
 | Suite | Checks | What it covers |
@@ -142,3 +142,24 @@ from `../easy-mystery-island/` (31 tests).
   next room load.
 - There is no falling off the bridge: the chasm is walled, because falling is not
   a loss condition in the original game.
+
+## Defect fix — 24 November 2026
+
+Two release-blocking defects in survivor creation were reported and fixed.
+
+**Names were restricted to ASCII.** `NAME_PATTERN` was `/^[A-Za-z][A-Za-z' -]{1,19}$/`,
+which rejected José, Ñoño, Chukwuemeka with any accent, and — most damagingly —
+O'Connor typed on a phone, because mobile keyboards insert U+2019 rather than
+U+0027. Validation is now Unicode-aware: any script's letters, plus spaces,
+hyphens, apostrophes (straight and curly) and full stops, up to 24 characters.
+Input is NFC-normalised, control characters are stripped, whitespace is trimmed
+and collapsed, and the name must contain at least one letter.
+
+**Confirming a name did not start the game on a phone.** `.screen` used
+`position:fixed` with `justify-content:center` and no overflow, so when the
+survivor form was taller than the viewport — which it is on a phone, especially
+with the keyboard open — the confirm button was clipped and could not be scrolled
+into reach. Taps landed on nothing. The screen now scrolls, centres only when
+there is room, respects the safe-area inset, and pulls the button into view when
+the field gains focus. A rejected name now shows a visible message instead of
+silently doing nothing, and the button reports that it is working.

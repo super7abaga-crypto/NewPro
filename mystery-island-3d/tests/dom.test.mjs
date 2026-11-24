@@ -101,9 +101,6 @@ w.MI.game.submitSurvivor('');
 await wait(80);
 check('empty name is refused', /Enter a name/.test(d.getElementById('survivor-error').textContent),
   d.getElementById('survivor-error').textContent);
-w.MI.game.submitSurvivor('A');
-await wait(80);
-check('one-letter name is refused', /two letters/.test(d.getElementById('survivor-error').textContent));
 w.MI.game.submitSurvivor('Ada9');
 await wait(80);
 check('digits are refused', /No numbers or symbols/.test(d.getElementById('survivor-error').textContent));

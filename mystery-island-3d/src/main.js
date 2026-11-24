@@ -368,23 +368,49 @@
   }
 
   /* The name is collected on the in-game survivor screen, not a browser prompt. */
-  const NAME_PATTERN = /^[A-Za-z][A-Za-z' -]{1,19}$/;
+  /* Any script's letters, plus the punctuation real names use. Deliberately
+   * Unicode-aware: phone keyboards type U+2019 for apostrophes, and names like
+   * José or Chukwuemeka must pass. */
+  const NAME_MAX = 24;
+  const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M} .'\u2019\u02BC-]*$/u;
 
   function openSurvivor() {
     if (audio) { audio.init(); audio.resume(); }
     ui.survivor.open('');
   }
 
-  function submitSurvivor(raw) {
-    const name = String(raw || '').trim().replace(/\s+/g, ' ');
-    if (!name) { ui.survivor.error('Enter a name so the story can address you.'); return; }
-    if (name.length < 2) { ui.survivor.error('A name needs at least two letters.'); return; }
+  /* Pure so it can be tested directly: returns { ok, name, error }. */
+  function validateName(raw) {
+    let name = String(raw == null ? '' : raw);
+    try { name = name.normalize('NFC'); } catch (err) { /* older engines */ }
+    name = name.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!name) return { ok: false, name: '', error: 'Enter a name so the story can address you.' };
+    if (name.length > NAME_MAX) return { ok: false, name, error: 'That name is too long. Keep it under ' + (NAME_MAX + 1) + ' characters.' };
+    if (!/[\p{L}]/u.test(name)) {
+      return { ok: false, name, error: 'A name needs at least one letter.' };
+    }
     if (!NAME_PATTERN.test(name)) {
-      ui.survivor.error("Use letters, spaces, hyphens or apostrophes. No numbers or symbols.");
+      return { ok: false, name, error: 'Use letters, spaces, hyphens or apostrophes. No numbers or symbols.' };
+    }
+    return { ok: true, name, error: '' };
+  }
+
+  function submitSurvivor(raw) {
+    const result = validateName(raw);
+    if (!result.ok) {
+      if (ui.survivor.busy) ui.survivor.busy(false);
+      ui.survivor.error(result.error);
       return;
     }
     ui.survivor.close();
-    startGame(name);
+    if (ui.survivor.busy) ui.survivor.busy(true);
+    try {
+      startGame(result.name);
+    } catch (err) {
+      if (ui.survivor.busy) ui.survivor.busy(false);
+      ui.survivor.error('The island failed to load. ' + (err && err.message ? err.message : ''));
+      if (root.console) root.console.error(err);
+    }
   }
 
   function newGame() {
@@ -674,5 +700,6 @@
     get kit() { return kit; },
     get guidance() { return rs ? MI.nav.step(rs) : null; },
     submitSurvivor(name) { submitSurvivor(name); },
+    validateName(name) { return validateName(name); },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

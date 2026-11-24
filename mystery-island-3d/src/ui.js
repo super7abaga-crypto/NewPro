@@ -208,6 +208,7 @@
       open(prefill) {
         show('survivor');
         survivor.error('');
+        survivor.busy(false); // a previous run may have left it disabled
         const input = $('survivor-name');
         if (input) {
           input.value = prefill || '';
@@ -227,13 +228,38 @@
         return input ? input.value : '';
       },
       onSubmit(fn) {
+        let firing = false;
+        const fire = () => {
+          // A click can also submit the form; collapse only that same-tick pair
+          // so a genuine second attempt is never swallowed.
+          if (firing) return;
+          firing = true;
+          setTimeout(() => { firing = false; }, 0);
+          fn(survivor.value());
+        };
         const form = $('form-survivor');
-        if (form) {
-          form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            fn(survivor.value());
+        if (form) form.addEventListener('submit', (e) => { e.preventDefault(); fire(); });
+        const go = $('survivor-go');
+        if (go) go.addEventListener('click', (e) => { e.preventDefault(); fire(); });
+        const input = $('survivor-name');
+        if (input) {
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); fire(); }
+          });
+          // The mobile keyboard halves the viewport; keep the button in reach.
+          input.addEventListener('focus', () => {
+            setTimeout(() => {
+              const b = $('survivor-go');
+              try { if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' }); } catch (err) { /* ignore */ }
+            }, 320);
           });
         }
+      },
+      busy(on) {
+        const go = $('survivor-go');
+        if (!go) return;
+        go.disabled = !!on;
+        go.textContent = on ? 'Stepping ashore...' : 'Step onto the beach';
       },
       onBack(fn) { bind('survivor-back', fn); },
     };

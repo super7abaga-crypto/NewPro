@@ -20,7 +20,7 @@ whether the jump scares land at the right moment.
 
 ## 2. What was verified, and how
 
-### 2.1 Automated suites — 314 checks, all passing
+### 2.1 Automated suites — 365 checks, all passing
 
 Run on 23 November 2026, Node 24 and Python 3.11.
 
@@ -111,7 +111,7 @@ state, not pixels. Specifically it confirms:
 | 12 | Desktop and mobile controls implemented | Both implemented; keyboard path exercised in tests. **Touch never used.** |
 | 13 | Save and continue | Verified. |
 | 14 | Original win and loss conditions intact | Verified, including parity against `game.py`. |
-| 15 | Existing tests pass, new tests added | 314 pass, including 75 new checks for nav and character. |
+| 15 | Existing tests pass, new tests added | 365 pass, including 75 new checks for nav and character. |
 
 ## 4. Outstanding defects and risks
 
@@ -132,3 +132,32 @@ The build is packaged, offline-capable and reproducible: `node build.mjs`
 regenerates `dist/index.html` byte for byte from source. It is ready to be
 inspected. It is **not** ready to be called finished, because nobody has played
 it.
+
+## 6. Post-release defect fix — 24 November 2026
+
+Reported against `9e9268a5`: survivor creation blocked gameplay, and the name
+field rejected legitimate characters.
+
+| Defect | Root cause | Fix |
+| --- | --- | --- |
+| Accented and apostrophe names rejected | `NAME_PATTERN` was ASCII-only; mobile keyboards emit U+2019 | Unicode-aware pattern, NFC normalisation, curly apostrophe accepted, 24-character limit |
+| Confirming did not start the game | `.screen` was fixed-position, vertically centred, with no overflow, so the button was clipped off-screen on a phone | Screen scrolls, centres only when it fits, safe-area padding, button scrolled into view on focus |
+| A rejected name looked like nothing happened | the error element had no styling and the button gave no feedback | `.err` styling with `:empty` hiding, visible "Stepping ashore..." state |
+| Confirm button stayed disabled after a run | `busy(true)` was never reset | `open()` resets it |
+
+**Verified by `tests/survivor.test.mjs` — 52 checks.** Names accepted:
+Myles, John Paul, O'Connor, O’Connor, Jean-Luc, Chukwuemeka, José, Ñoño, Zoë,
+Аня, Björk, Anne-Marie, Niamh O'Neill, 李雷. Rejected: empty, whitespace only,
+digits, digits inside a name, symbols only, over 24 characters, a bare accent
+mark. The transition is driven through the real DOM: click New Game, type José,
+click the button, and the test asserts the game is playing, the survivor screen
+is gone, the HUD is on, the player is at the Beach with 5 energy, the name is
+carried into player state, the camera sits 5.6 m behind and 3.15 m above, the
+guidance and objective lines are populated, the minimap canvas exists, the player
+moves 3.03 m on the first input, and the character follows. The Enter key path and
+the rejected-name path are covered too.
+
+**This is still not browser evidence.** The flow above is jsdom with structural
+Three.js mocks. No real browser or phone has run it, so the layout fix in
+particular — the actual reason a phone tap did nothing — is reasoned from CSS,
+not observed. It needs a real phone before this can be called closed.

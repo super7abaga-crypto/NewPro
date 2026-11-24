@@ -121,8 +121,10 @@
   @media (max-width:520px){ .inv{max-width:56vw} #prompt{bottom:26%} }
 
   /* ---------- survivor creation ---------- */
-  .survivor{background:radial-gradient(ellipse at 50% 20%, rgba(28,44,58,.55), rgba(4,6,9,.96) 62%)}
-  .surv-wrap{width:min(92vw,540px);margin:0 auto;text-align:left}
+  .survivor{background:radial-gradient(ellipse at 50% 20%, rgba(28,44,58,.55), rgba(4,6,9,.96) 62%);
+    justify-content:flex-start;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+  .surv-wrap{width:min(92vw,540px);margin:auto;text-align:left}
   .surv-kicker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);opacity:.8;margin-bottom:10px}
   .surv-title{font-family:Georgia,'Times New Roman',serif;font-size:clamp(26px,7vw,40px);line-height:1.1;margin:0 0 14px;color:#f2ece2}
   .surv-intro{font-size:13.5px;line-height:1.75;color:rgba(226,236,244,.72);margin:0 0 22px}
@@ -133,7 +135,8 @@
   .surv-hint{font-size:11.5px;color:rgba(200,215,225,.45);margin-top:8px;line-height:1.5}
   .survivor .btn.primary{width:100%;margin-top:18px}
   .survivor .linkbtn{display:block;margin:14px auto 0}
-  .survivor .err{margin-top:12px}
+  .err{color:#ff9d8a;font-size:12.5px;line-height:1.55;margin-top:12px}
+  .err:empty{display:none}
 
   /* ---------- roadmap: minimap + objective arrow ---------- */
   #roadmap{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;
@@ -244,12 +247,13 @@
       salt in your throat and nothing but the clothes you swam in. The lighthouse
       on the ridge is dark, and no ship will look for you until that beacon burns.
     </p>
-    <form id="form-survivor" autocomplete="off">
+    <form id="form-survivor" autocomplete="off" novalidate>
       <label class="surv-label" for="survivor-name">Survivor name</label>
-      <input id="survivor-name" name="survivor-name" type="text" maxlength="20"
+      <input id="survivor-name" name="survivor-name" type="text" maxlength="24"
              autocapitalize="words" autocorrect="off" spellcheck="false"
+             enterkeyhint="done" autocomplete="off"
              placeholder="Type your name" aria-describedby="survivor-hint survivor-error" />
-      <div class="surv-hint" id="survivor-hint">Two to twenty characters. Letters, spaces, hyphens and apostrophes.</div>
+      <div class="surv-hint" id="survivor-hint">Up to 24 characters. Any letters, including accented ones, plus spaces, hyphens and apostrophes.</div>
       <div class="err" id="survivor-error"></div>
       <button class="btn primary" id="survivor-go" type="submit">Step onto the beach</button>
     </form>
@@ -3222,6 +3226,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       open(prefill) {
         show('survivor');
         survivor.error('');
+        survivor.busy(false); // a previous run may have left it disabled
         const input = $('survivor-name');
         if (input) {
           input.value = prefill || '';
@@ -3241,13 +3246,38 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
         return input ? input.value : '';
       },
       onSubmit(fn) {
+        let firing = false;
+        const fire = () => {
+          // A click can also submit the form; collapse only that same-tick pair
+          // so a genuine second attempt is never swallowed.
+          if (firing) return;
+          firing = true;
+          setTimeout(() => { firing = false; }, 0);
+          fn(survivor.value());
+        };
         const form = $('form-survivor');
-        if (form) {
-          form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            fn(survivor.value());
+        if (form) form.addEventListener('submit', (e) => { e.preventDefault(); fire(); });
+        const go = $('survivor-go');
+        if (go) go.addEventListener('click', (e) => { e.preventDefault(); fire(); });
+        const input = $('survivor-name');
+        if (input) {
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); fire(); }
+          });
+          // The mobile keyboard halves the viewport; keep the button in reach.
+          input.addEventListener('focus', () => {
+            setTimeout(() => {
+              const b = $('survivor-go');
+              try { if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' }); } catch (err) { /* ignore */ }
+            }, 320);
           });
         }
+      },
+      busy(on) {
+        const go = $('survivor-go');
+        if (!go) return;
+        go.disabled = !!on;
+        go.textContent = on ? 'Stepping ashore...' : 'Step onto the beach';
       },
       onBack(fn) { bind('survivor-back', fn); },
     };
@@ -3657,23 +3687,49 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
 
   /* The name is collected on the in-game survivor screen, not a browser prompt. */
-  const NAME_PATTERN = /^[A-Za-z][A-Za-z' -]{1,19}$/;
+  /* Any script's letters, plus the punctuation real names use. Deliberately
+   * Unicode-aware: phone keyboards type U+2019 for apostrophes, and names like
+   * José or Chukwuemeka must pass. */
+  const NAME_MAX = 24;
+  const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M} .'\u2019\u02BC-]*$/u;
 
   function openSurvivor() {
     if (audio) { audio.init(); audio.resume(); }
     ui.survivor.open('');
   }
 
-  function submitSurvivor(raw) {
-    const name = String(raw || '').trim().replace(/\s+/g, ' ');
-    if (!name) { ui.survivor.error('Enter a name so the story can address you.'); return; }
-    if (name.length < 2) { ui.survivor.error('A name needs at least two letters.'); return; }
+  /* Pure so it can be tested directly: returns { ok, name, error }. */
+  function validateName(raw) {
+    let name = String(raw == null ? '' : raw);
+    try { name = name.normalize('NFC'); } catch (err) { /* older engines */ }
+    name = name.replace(/[\u0000-\u001F\u007F]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!name) return { ok: false, name: '', error: 'Enter a name so the story can address you.' };
+    if (name.length > NAME_MAX) return { ok: false, name, error: 'That name is too long. Keep it under ' + (NAME_MAX + 1) + ' characters.' };
+    if (!/[\p{L}]/u.test(name)) {
+      return { ok: false, name, error: 'A name needs at least one letter.' };
+    }
     if (!NAME_PATTERN.test(name)) {
-      ui.survivor.error("Use letters, spaces, hyphens or apostrophes. No numbers or symbols.");
+      return { ok: false, name, error: 'Use letters, spaces, hyphens or apostrophes. No numbers or symbols.' };
+    }
+    return { ok: true, name, error: '' };
+  }
+
+  function submitSurvivor(raw) {
+    const result = validateName(raw);
+    if (!result.ok) {
+      if (ui.survivor.busy) ui.survivor.busy(false);
+      ui.survivor.error(result.error);
       return;
     }
     ui.survivor.close();
-    startGame(name);
+    if (ui.survivor.busy) ui.survivor.busy(true);
+    try {
+      startGame(result.name);
+    } catch (err) {
+      if (ui.survivor.busy) ui.survivor.busy(false);
+      ui.survivor.error('The island failed to load. ' + (err && err.message ? err.message : ''));
+      if (root.console) root.console.error(err);
+    }
   }
 
   function newGame() {
@@ -3963,6 +4019,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     get kit() { return kit; },
     get guidance() { return rs ? MI.nav.step(rs) : null; },
     submitSurvivor(name) { submitSurvivor(name); },
+    validateName(name) { return validateName(name); },
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 
